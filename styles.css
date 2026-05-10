@@ -1,0 +1,476 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #101214;
+  color: #f6f2e9;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+#game {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  cursor: crosshair;
+}
+
+.start-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 50% 48%, rgba(88, 166, 255, 0.18), transparent 34%),
+    rgba(16, 18, 20, 0.84);
+  backdrop-filter: blur(6px);
+}
+
+.start-screen.hidden {
+  display: none;
+}
+
+.start-panel {
+  width: min(520px, 100%);
+  padding: 30px;
+  border: 1px solid rgba(246, 242, 233, 0.2);
+  border-radius: 8px;
+  background: rgba(16, 18, 20, 0.78);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.48);
+  text-align: center;
+}
+
+.start-kicker {
+  color: #8df4df;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.start-panel h1 {
+  margin: 8px 0 10px;
+  font-size: clamp(44px, 10vw, 76px);
+  line-height: 0.92;
+  letter-spacing: 0;
+}
+
+.start-copy {
+  max-width: 360px;
+  margin: 0 auto 22px;
+  color: rgba(246, 242, 233, 0.74);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.nickname-field {
+  display: block;
+  width: min(260px, 100%);
+  margin: 0 auto 12px;
+  text-align: left;
+}
+
+.nickname-field span {
+  display: block;
+  margin-bottom: 6px;
+  color: rgba(246, 242, 233, 0.74);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.nickname-field input {
+  width: 100%;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid rgba(246, 242, 233, 0.22);
+  border-radius: 8px;
+  outline: 0;
+  background: rgba(246, 242, 233, 0.08);
+  color: #f6f2e9;
+  font: inherit;
+  font-weight: 800;
+}
+
+.nickname-field input:focus {
+  border-color: #8df4df;
+}
+
+.start-button {
+  width: min(260px, 100%);
+  height: 48px;
+  border: 0;
+  border-radius: 8px;
+  background: #ffcf5f;
+  color: #101214;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.start-button:hover {
+  background: #ffdf86;
+}
+
+.control-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+  width: min(340px, 100%);
+  margin: 24px auto 0;
+  color: rgba(246, 242, 233, 0.74);
+  font-size: 12px;
+  text-align: left;
+}
+
+.control-grid span:nth-child(odd) {
+  color: #f6f2e9;
+  font-weight: 900;
+  text-align: right;
+}
+
+.game-pending .hud,
+.game-pending .inventory {
+  display: none;
+}
+
+.hud {
+  position: fixed;
+  top: 18px;
+  left: 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  pointer-events: none;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.35);
+}
+
+.brand {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.stats,
+.health-status,
+.dash-status {
+  min-width: 86px;
+  padding: 6px 9px;
+  border: 1px solid rgba(246, 242, 233, 0.18);
+  border-radius: 8px;
+  background: rgba(16, 18, 20, 0.48);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  backdrop-filter: blur(8px);
+}
+
+.health-status {
+  min-width: 174px;
+  border-color: rgba(239, 111, 143, 0.48);
+  color: #ff9cb5;
+}
+
+.health-label {
+  text-align: center;
+}
+
+.health-bar {
+  width: 100%;
+  height: 6px;
+  margin-top: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(246, 242, 233, 0.16);
+}
+
+.health-bar-fill {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #ff6f8f, #8df4df);
+  transition: width 0.16s ease;
+}
+
+.dash-status {
+  min-width: 96px;
+  text-align: center;
+}
+
+.dash-status.ready {
+  border-color: rgba(88, 215, 196, 0.48);
+  color: #8df4df;
+}
+
+.dash-status.cooldown {
+  border-color: rgba(255, 207, 95, 0.42);
+  color: #ffdf86;
+}
+
+.inventory {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  display: grid;
+  grid-template-columns: repeat(3, 84px);
+  gap: 10px;
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+.slot {
+  position: relative;
+  height: 92px;
+  padding: 8px;
+  border: 1px solid rgba(246, 242, 233, 0.18);
+  border-radius: 8px;
+  background: rgba(16, 18, 20, 0.62);
+  color: #f6f2e9;
+  font: inherit;
+  text-align: center;
+  backdrop-filter: blur(10px);
+}
+
+.slot.active {
+  border-color: #ffcf5f;
+  box-shadow:
+    0 0 0 2px rgba(255, 207, 95, 0.24),
+    0 8px 30px rgba(0, 0, 0, 0.35);
+}
+
+.slot.dragging {
+  opacity: 0.62;
+}
+
+.slot.drop-target {
+  border-color: #58d7c4;
+  box-shadow:
+    0 0 0 2px rgba(88, 215, 196, 0.28),
+    0 8px 30px rgba(0, 0, 0, 0.22);
+}
+
+.hidden {
+  display: none !important;
+}
+
+.slot-key {
+  position: absolute;
+  top: 6px;
+  left: 7px;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: rgba(246, 242, 233, 0.14);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 18px;
+}
+
+.weapon-icon {
+  position: relative;
+  display: block;
+  width: 62px;
+  height: 42px;
+  margin: 10px auto 5px;
+}
+
+.knife-icon {
+  transform: rotate(-24deg);
+}
+
+.knife-blade {
+  position: absolute;
+  right: 4px;
+  top: 10px;
+  width: 42px;
+  height: 14px;
+  border-radius: 100% 12px 12px 100%;
+  background: linear-gradient(160deg, #f4f6f2 0%, #9eaab2 56%, #e8ecec 100%);
+  box-shadow: inset 0 -3px 0 rgba(68, 78, 82, 0.28);
+}
+
+.knife-blade::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 2px;
+  width: 28px;
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(65, 80, 86, 0.42);
+}
+
+.knife-handle {
+  position: absolute;
+  left: 4px;
+  top: 11px;
+  width: 24px;
+  height: 12px;
+  border-radius: 6px;
+  background: repeating-linear-gradient(90deg, #20272b 0 5px, #3d484d 5px 9px);
+  box-shadow: 20px -3px 0 -7px #15191c;
+}
+
+.glock-icon {
+  margin-top: 12px;
+}
+
+.glock-slide {
+  position: absolute;
+  left: 5px;
+  top: 8px;
+  width: 52px;
+  height: 13px;
+  border-radius: 4px 6px 3px 3px;
+  background: linear-gradient(#202428, #07090b);
+  box-shadow: inset 10px 0 0 rgba(255, 255, 255, 0.06);
+}
+
+.glock-slide::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: 2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #11161a;
+}
+
+.glock-grip {
+  position: absolute;
+  left: 34px;
+  top: 18px;
+  width: 17px;
+  height: 24px;
+  border-radius: 3px 3px 6px 6px;
+  background: linear-gradient(100deg, #1d2226, #050607);
+  transform: skewX(12deg);
+}
+
+.glock-trigger {
+  position: absolute;
+  left: 23px;
+  top: 21px;
+  width: 14px;
+  height: 14px;
+  border: 3px solid #101417;
+  border-top: 0;
+  border-radius: 0 0 8px 8px;
+}
+
+.awm-icon {
+  width: 68px;
+  margin-top: 12px;
+}
+
+.awm-scope {
+  position: absolute;
+  left: 18px;
+  top: 2px;
+  width: 28px;
+  height: 8px;
+  border-radius: 999px;
+  background: #0a0d0f;
+  box-shadow:
+    -4px 2px 0 -2px #2d3438,
+    22px 2px 0 -2px #2d3438;
+}
+
+.awm-barrel {
+  position: absolute;
+  left: 33px;
+  top: 18px;
+  width: 34px;
+  height: 4px;
+  border-radius: 999px;
+  background: #101417;
+}
+
+.awm-barrel::after {
+  content: "";
+  position: absolute;
+  right: -4px;
+  top: -2px;
+  width: 7px;
+  height: 8px;
+  border-radius: 2px;
+  background: #050607;
+}
+
+.awm-body {
+  position: absolute;
+  left: 13px;
+  top: 15px;
+  width: 28px;
+  height: 12px;
+  border-radius: 8px 4px 6px 8px;
+  background: linear-gradient(160deg, #7a8057, #4f5637);
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.22);
+}
+
+.awm-body::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 7px;
+  width: 9px;
+  height: 9px;
+  border: 3px solid #161a12;
+  border-top: 0;
+  border-radius: 0 0 8px 8px;
+}
+
+.awm-stock {
+  position: absolute;
+  left: 1px;
+  top: 15px;
+  width: 17px;
+  height: 15px;
+  border-radius: 9px 3px 3px 9px;
+  background: #656d45;
+}
+
+.empty-mark {
+  display: block;
+  width: 32px;
+  height: 32px;
+  margin: 18px auto 7px;
+  border: 2px dashed rgba(246, 242, 233, 0.26);
+  border-radius: 8px;
+}
+
+.slot-name {
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 13px;
+}
+
+.slot-meta {
+  display: block;
+  min-height: 13px;
+  margin-top: 2px;
+  color: #ffdf86;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 12px;
+}
+
+@media (max-width: 520px) {
+  .inventory {
+    grid-template-columns: repeat(3, 72px);
+  }
+
+  .slot {
+    height: 84px;
+  }
+}
