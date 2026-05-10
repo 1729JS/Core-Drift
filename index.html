@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Core Drift</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <canvas id="game" aria-label="WASD movement game"></canvas>
+    <section class="start-screen" id="startScreen" aria-label="Game start screen">
+      <div class="start-panel">
+        <div class="start-kicker">Survive. Loot. Drift.</div>
+        <h1>Core Drift</h1>
+        <p class="start-copy">칼 하나로 시작해서 상자를 부수고, 무기와 보호막을 주워 살아남으세요.</p>
+        <label class="nickname-field">
+          <span>Nickname</span>
+          <input id="nicknameInput" type="text" maxlength="14" placeholder="Player" autocomplete="off" />
+        </label>
+        <button class="start-button" id="startButton" type="button">Start Game</button>
+        <div class="control-grid" aria-label="Controls">
+          <span>WASD</span>
+          <span>Move</span>
+          <span>Left Click</span>
+          <span>Attack</span>
+          <span>Right Click</span>
+          <span>Charge Knife</span>
+          <span>Space</span>
+          <span>Dash</span>
+          <span>F</span>
+          <span>Drop Weapon</span>
+        </div>
+      </div>
+    </section>
+    <div class="hud">
+      <div class="brand">Core Drift</div>
+      <div class="stats">
+        <span id="coords">0, 0</span>
+      </div>
+      <div class="health-status" id="healthStatus">HP 200 / 200</div>
+      <div class="dash-status ready" id="dashStatus">Dash ready</div>
+    </div>
+    <div class="inventory" aria-label="Weapon slots">
+      <button class="slot" data-slot="1" type="button" aria-label="Slot 1 Knife">
+        <span class="slot-key">1</span>
+        <span class="weapon-icon knife-icon">
+          <span class="knife-blade"></span>
+          <span class="knife-handle"></span>
+        </span>
+        <span class="slot-name">Knife</span>
+      </button>
+      <button class="slot empty" data-slot="2" type="button" aria-label="Slot 2 Empty">
+        <span class="slot-key">2</span>
+        <span class="weapon-icon glock-icon hidden" id="slot2Icon">
+          <span class="glock-slide"></span>
+          <span class="glock-grip"></span>
+          <span class="glock-trigger"></span>
+        </span>
+        <span class="empty-mark" id="slot2Empty"></span>
+        <span class="slot-name" id="slot2Name">Empty</span>
+        <span class="slot-meta" id="ammoStatus"></span>
+      </button>
+      <button class="slot empty" data-slot="3" type="button" aria-label="Slot 3 Empty">
+        <span class="slot-key">3</span>
+        <span class="weapon-icon awm-icon hidden" id="slot3Icon">
+          <span class="awm-scope"></span>
+          <span class="awm-barrel"></span>
+          <span class="awm-body"></span>
+          <span class="awm-stock"></span>
+        </span>
+        <span class="empty-mark" id="slot3Empty"></span>
+        <span class="slot-name" id="slot3Name">Empty</span>
+        <span class="slot-meta" id="awmAmmoStatus"></span>
+      </button>
+    </div>
+    <script src="game.js"></script>
+  </body>
+</html>
