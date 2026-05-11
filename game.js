@@ -45,6 +45,7 @@ const player = {
   vy: 0,
   shotTimer: 0,
   swingTimer: 0,
+  punchTimer: 0,
   knifeCharge: 0,
   knifeChargeMax: 1.25,
   knifeCharging: false,
@@ -64,6 +65,13 @@ const weapons = {
     arc: Math.PI * 0.72,
     swingDuration: 0.18,
     count: 1,
+  },
+  fist: {
+    damage: 10,
+    fireRate: 0.36,
+    range: 52,
+    arc: Math.PI * 0.62,
+    swingDuration: 0.16,
   },
   glock: {
     damage: 50,
@@ -166,6 +174,7 @@ function resetGameState() {
   player.hurtTimer = 0;
   player.shotTimer = 0;
   player.swingTimer = 0;
+  player.punchTimer = 0;
   player.knifeCharge = 0;
   player.knifeCharging = false;
 
@@ -632,8 +641,13 @@ function connectMultiplayer() {
       message.attack.ownerId = message.id;
       const remote = remotePlayers.get(message.id);
       if (remote) {
-        remote.swingTimer = message.attack.swingDuration || weapons.knife.swingDuration;
-        remote.swingDuration = message.attack.swingDuration || weapons.knife.swingDuration;
+        if (message.attack.weapon === "fist") {
+          remote.punchTimer = message.attack.swingDuration || weapons.fist.swingDuration;
+          remote.punchDuration = message.attack.swingDuration || weapons.fist.swingDuration;
+        } else {
+          remote.swingTimer = message.attack.swingDuration || weapons.knife.swingDuration;
+          remote.swingDuration = message.attack.swingDuration || weapons.knife.swingDuration;
+        }
       }
       handleRemoteMelee(message.attack);
     } else if (message.type === "world") {
@@ -715,6 +729,8 @@ function getPlayerSnapshot() {
     aimAngle: getAimAngle(),
     swingTimer: player.swingTimer,
     swingDuration: weapons.knife.swingDuration,
+    punchTimer: player.punchTimer,
+    punchDuration: weapons.fist.swingDuration,
     knifeCharging: player.knifeCharging,
     knifeCharge: player.knifeCharge,
   };
@@ -865,6 +881,47 @@ function swingKnife() {
   return true;
 }
 
+function punch() {
+  if (weapons.slots[weapons.selectedSlot]) {
+    return false;
+  }
+
+  const fist = weapons.fist;
+  const angle = getAimAngle();
+
+  sendNetwork("melee", {
+    attack: {
+      x: player.x,
+      y: player.y,
+      angle,
+      range: fist.range,
+      arc: fist.arc,
+      damage: fist.damage,
+      swingDuration: fist.swingDuration,
+      weapon: "fist",
+    },
+  });
+
+  for (let index = crates.length - 1; index >= 0; index -= 1) {
+    const crate = crates[index];
+    const distance = Math.hypot(crate.x - player.x, crate.y - player.y);
+
+    if (distance > fist.range + crate.size / 2) {
+      continue;
+    }
+
+    const targetAngle = Math.atan2(crate.y - player.y, crate.x - player.x);
+    const angleDiff = Math.atan2(Math.sin(targetAngle - angle), Math.cos(targetAngle - angle));
+
+    if (Math.abs(angleDiff) <= fist.arc / 2) {
+      damageCrate(index, fist.damage);
+    }
+  }
+
+  player.punchTimer = fist.swingDuration;
+  return true;
+}
+
 function throwKnife() {
   const sourceSlot = weapons.selectedSlot;
 
@@ -989,6 +1046,7 @@ function update(delta) {
 
   player.shotTimer -= delta;
   player.swingTimer = Math.max(0, player.swingTimer - delta);
+  player.punchTimer = Math.max(0, player.punchTimer - delta);
   if (player.knifeCharging && weapons.slots[weapons.selectedSlot] === "knife") {
     player.knifeCharge = Math.min(player.knifeChargeMax, player.knifeCharge + delta);
   }
@@ -1013,6 +1071,8 @@ function update(delta) {
   if (mouse.down && player.shotTimer <= 0) {
     if (weapons.slots[weapons.selectedSlot] === "knife" && swingKnife()) {
       player.shotTimer = weapons.knife.fireRate;
+    } else if (!weapons.slots[weapons.selectedSlot] && punch()) {
+      player.shotTimer = weapons.fist.fireRate;
     } else if (fireBullet()) {
       player.shotTimer = weapons.slots[weapons.selectedSlot] === "awm" ? weapons.awm.fireRate : weapons.glock.fireRate;
     } else {
@@ -1620,6 +1680,7 @@ function drawRemotePlayers(time) {
     remote.renderY += (remote.y - remote.renderY) * 0.22;
     remote.renderAimAngle = lerpAngle(remote.renderAimAngle, remote.aimAngle || 0, 0.24);
     remote.swingTimer = Math.max(0, (remote.swingTimer || 0) - 1 / 60);
+    remote.punchTimer = Math.max(0, (remote.punchTimer || 0) - 1 / 60);
 
     const x = worldToScreenX(remote.renderX);
     const y = worldToScreenY(remote.renderY);
@@ -1660,6 +1721,8 @@ function drawRemotePlayers(time) {
       ctx.fill();
     } else if (remote.selectedWeapon === "knife") {
       drawKnifeWeapon(remote.swingTimer || 0, remote.swingDuration || weapons.knife.swingDuration);
+    } else {
+      drawFistWeapon(remote.punchTimer || 0, remote.punchDuration || weapons.fist.swingDuration);
     }
 
     ctx.rotate(-aimAngle);
@@ -1749,6 +1812,42 @@ function drawKnifeWeapon(swingTimer, swingDuration) {
   ctx.restore();
 }
 
+function drawFistWeapon(punchTimer, punchDuration) {
+  const punching = punchTimer > 0;
+  const progress = punching ? clamp(1 - punchTimer / punchDuration, 0, 1) : 0;
+  const thrust = punching ? Math.sin(progress * Math.PI) * 24 : 0;
+  const recoil = punching ? (1 - progress) * 5 : 0;
+
+  ctx.save();
+  ctx.translate(player.radius + 2 + thrust - recoil, 0);
+
+  if (punching) {
+    ctx.strokeStyle = "rgba(246, 242, 233, 0.42)";
+    ctx.lineWidth = 5;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(-18, 0);
+    ctx.lineTo(12, 0);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = "#f0b78f";
+  ctx.strokeStyle = "#7a4e3a";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(11, 0, 9, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = "#d8956f";
+  ctx.beginPath();
+  ctx.arc(5, -5, 4, 0, Math.PI * 2);
+  ctx.arc(6, 0, 4, 0, Math.PI * 2);
+  ctx.arc(5, 5, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
 function drawPlayer(time) {
   const x = worldToScreenX(player.x);
   const y = worldToScreenY(player.y);
@@ -1802,6 +1901,8 @@ function drawPlayer(time) {
     ctx.beginPath();
     ctx.roundRect(5, -18, 32, 8, 4);
     ctx.fill();
+  } else {
+    drawFistWeapon(player.punchTimer, weapons.fist.swingDuration);
   }
 
   ctx.rotate(-aimAngle);
