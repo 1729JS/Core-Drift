@@ -1093,9 +1093,30 @@ function update(delta) {
     bullet.y += bullet.vy * delta;
     bullet.life -= delta;
 
-    const hitPlayer = !bullet.hitLocal && Math.hypot(bullet.x - player.x, bullet.y - player.y) <= bullet.radius + player.radius;
-    const expired = bullet.life <= 0 || bullet.x < -80 || bullet.x > world.width + 80 || bullet.y < -80 || bullet.y > world.height + 80;
     let bulletSpent = false;
+
+    for (const crate of crates) {
+      if (!circleHitsBox(bullet, crate)) {
+        continue;
+      }
+
+      if (bullet.weapon === "knife") {
+        bulletSpent = true;
+        break;
+      }
+
+      const absorbed = Math.min(bullet.damage, Math.max(0, crate.hp));
+      bullet.damage -= absorbed;
+
+      if (bullet.damage <= 0 || absorbed <= 0) {
+        bulletSpent = true;
+      }
+
+      break;
+    }
+
+    const hitPlayer = !bulletSpent && !bullet.hitLocal && Math.hypot(bullet.x - player.x, bullet.y - player.y) <= bullet.radius + player.radius;
+    const expired = bullet.life <= 0 || bullet.x < -80 || bullet.x > world.width + 80 || bullet.y < -80 || bullet.y > world.height + 80;
 
     if (hitPlayer) {
       const absorbed = Math.min(bullet.damage, getPlayerDamageCapacity());
