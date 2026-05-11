@@ -230,12 +230,43 @@ function circleHitsBox(circle, box) {
   return Math.hypot(circle.x - closestX, circle.y - closestY) <= circle.radius;
 }
 
+function getBoxHitPoint(circle, box) {
+  const half = box.size / 2;
+
+  return {
+    x: clamp(circle.x, box.x - half, box.x + half),
+    y: clamp(circle.y, box.y - half, box.y + half),
+  };
+}
+
+function getPlayerDamageCapacity() {
+  return Math.max(0, player.health) + Math.max(0, player.shield);
+}
+
+function applyBulletKnockback(damage, vx, vy) {
+  const length = Math.hypot(vx, vy);
+
+  if (length <= 0) {
+    return;
+  }
+
+  const force = clamp(110 + damage * 3.2, 150, 620);
+  player.vx += (vx / length) * force;
+  player.vy += (vy / length) * force;
+}
+
 function damageCrate(index, damage) {
   const crate = crates[index];
   const destroyed = crate && crate.hp - damage <= 0;
 
   if (sharedWorldActive && crate?.id) {
     sendNetwork("crateDamage", { id: crate.id, damage });
+    crate.hp -= damage;
+
+    if (crate.hp <= 0) {
+      crates.splice(index, 1);
+    }
+
     return true;
   }
 
@@ -270,7 +301,11 @@ function spawnPickup(x, y, forcedType = null, data = {}) {
   });
 }
 
-function applyDamage(amount, sourceId = null) {
+function applyDamage(amount, sourceId = null, knockback = null) {
+  if (knockback) {
+    applyBulletKnockback(amount, knockback.vx, knockback.vy);
+  }
+
   if (sharedWorldActive) {
     sendNetwork("damageMe", { damage: amount, sourceId });
     return;
@@ -322,8 +357,12 @@ function getPickupWeaponAmmo(item, weaponName) {
 function canCollectPickup(item) {
   const type = getPickupType(item);
 
-  if (type === "armor" || type === "medkit") {
-    return true;
+  if (type === "armor") {
+    return player.shield < player.maxShield;
+  }
+
+  if (type === "medkit") {
+    return player.health < player.maxHealth;
   }
 
   if (type === "knife" || type === "glock" || type === "awm") {
@@ -407,7 +446,7 @@ function collectPickup(index) {
   } else if (pickup.type === "awm") {
     collected = addWeaponToInventory(pickup);
   } else if (pickup.type === "armor") {
-    player.shield = player.maxShield;
+    player.shield = Math.min(player.maxShield, player.shield + 25);
     collected = true;
   } else if (pickup.type === "medkit") {
     player.health = Math.min(player.maxHealth, player.health + 60);
@@ -432,7 +471,7 @@ function applyPickupItem(item) {
   } else if (type === "awm") {
     collected = addWeaponToInventory(item);
   } else if (type === "armor") {
-    player.shield = player.maxShield;
+    player.shield = Math.min(player.maxShield, player.shield + 25);
     collected = true;
   } else if (type === "medkit") {
     player.health = Math.min(player.maxHealth, player.health + 60);
@@ -967,22 +1006,40 @@ function update(delta) {
     bullet.life -= delta;
 
     let hitCrate = false;
+    let bulletSpent = false;
+    let knifeDropPoint = null;
 
     for (let crateIndex = crates.length - 1; crateIndex >= 0; crateIndex -= 1) {
-      if (circleHitsBox(bullet, crates[crateIndex])) {
-        damageCrate(crateIndex, bullet.damage);
+      const crate = crates[crateIndex];
+
+      if (circleHitsBox(bullet, crate)) {
+        const hitPoint = getBoxHitPoint(bullet, crate);
+        const absorbed = bullet.weapon === "knife" ? bullet.damage : Math.min(bullet.damage, crate.hp);
+        damageCrate(crateIndex, absorbed);
         hitCrate = true;
-        break;
+
+        if (bullet.weapon === "knife") {
+          knifeDropPoint = hitPoint;
+          bulletSpent = true;
+          break;
+        }
+
+        bullet.damage -= absorbed;
+
+        if (bullet.damage <= 0) {
+          bulletSpent = true;
+          break;
+        }
       }
     }
 
     const expired = bullet.life <= 0 || bullet.x < -80 || bullet.x > world.width + 80 || bullet.y < -80 || bullet.y > world.height + 80;
 
     if (bullet.weapon === "knife" && (hitCrate || expired)) {
-      dropPickupAt(bullet.x, bullet.y, bullet.pickup || { type: "knife", count: 1 });
+      dropPickupAt(knifeDropPoint?.x ?? bullet.x, knifeDropPoint?.y ?? bullet.y, bullet.pickup || { type: "knife", count: 1 });
     }
 
-    if (hitCrate || expired) {
+    if (bulletSpent || expired) {
       bullets.splice(index, 1);
     }
   }
@@ -995,12 +1052,25 @@ function update(delta) {
 
     const hitPlayer = Math.hypot(bullet.x - player.x, bullet.y - player.y) <= bullet.radius + player.radius;
     const expired = bullet.life <= 0 || bullet.x < -80 || bullet.x > world.width + 80 || bullet.y < -80 || bullet.y > world.height + 80;
+    let bulletSpent = false;
 
     if (hitPlayer) {
-      applyDamage(bullet.damage, bullet.ownerId);
+      const absorbed = Math.min(bullet.damage, getPlayerDamageCapacity());
+
+      if (absorbed > 0) {
+        applyDamage(absorbed, bullet.ownerId, { vx: bullet.vx, vy: bullet.vy });
+        bullet.damage -= absorbed;
+      }
+
+      if (bullet.weapon === "knife") {
+        dropPickupAt(bullet.x, bullet.y, bullet.pickup || { type: "knife", count: 1 });
+        bulletSpent = true;
+      } else if (bullet.damage <= 0 || absorbed <= 0) {
+        bulletSpent = true;
+      }
     }
 
-    if (hitPlayer || expired) {
+    if (bulletSpent || expired) {
       remoteBullets.splice(index, 1);
     }
   }
@@ -1505,13 +1575,15 @@ function drawRemotePlayers(time) {
     ctx.stroke();
 
     if (remote.shield > 0) {
-      const shieldRatio = remote.shield / remote.maxShield;
+      const shieldRatio = clamp(remote.shield / remote.maxShield, 0, 1);
       const shieldPulse = Math.sin(time * 0.007) * 2;
-      ctx.strokeStyle = `rgba(141, 244, 223, ${0.24 + shieldRatio * 0.38})`;
+      ctx.strokeStyle = `rgba(141, 244, 223, ${0.22 + shieldRatio * 0.46})`;
       ctx.lineWidth = 4;
+      ctx.lineCap = "round";
       ctx.beginPath();
-      ctx.arc(0, 0, player.radius + 13 + shieldPulse, 0, Math.PI * 2);
+      ctx.arc(0, 0, player.radius + 13 + shieldPulse, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * shieldRatio);
       ctx.stroke();
+      ctx.lineCap = "butt";
     }
 
     ctx.fillStyle = "rgba(16, 18, 20, 0.7)";
@@ -1655,18 +1727,20 @@ function drawPlayer(time) {
   }
 
   if (player.shield > 0) {
-    const shieldRatio = player.shield / player.maxShield;
+    const shieldRatio = clamp(player.shield / player.maxShield, 0, 1);
     const shieldPulse = Math.sin(time * 0.007) * 2;
     ctx.strokeStyle = `rgba(141, 244, 223, ${0.28 + shieldRatio * 0.42})`;
     ctx.lineWidth = 4;
+    ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.arc(0, 0, player.radius + 13 + shieldPulse, 0, Math.PI * 2);
+    ctx.arc(0, 0, player.radius + 13 + shieldPulse, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * shieldRatio);
     ctx.stroke();
     ctx.strokeStyle = `rgba(88, 166, 255, ${0.12 + shieldRatio * 0.2})`;
     ctx.lineWidth = 9;
     ctx.beginPath();
-    ctx.arc(0, 0, player.radius + 20 + shieldPulse, -0.7, Math.PI * 1.45);
+    ctx.arc(0, 0, player.radius + 20 + shieldPulse, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * shieldRatio);
     ctx.stroke();
+    ctx.lineCap = "butt";
   }
 
   ctx.fillStyle = "#f6f2e9";

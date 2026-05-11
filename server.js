@@ -292,10 +292,19 @@ server.on("upgrade", (request, socket) => {
         const client = clients.get(id);
         const pickup = pickups.find((candidate) => candidate.id === message.id);
         if (client?.state && pickup && Math.hypot(client.state.x - pickup.x, client.state.y - pickup.y) <= 72) {
+          if (pickup.type === "armor" && (client.state.shield || 0) >= (client.state.maxShield || 125)) {
+            continue;
+          }
+
+          if (pickup.type === "medkit" && (client.state.health || 0) >= (client.state.maxHealth || 200)) {
+            continue;
+          }
+
           pickups.splice(pickups.indexOf(pickup), 1);
 
           if (pickup.type === "armor") {
-            client.state = { ...client.state, shield: 125, maxShield: 125 };
+            const maxShield = client.state.maxShield || 125;
+            client.state = { ...client.state, shield: Math.min(maxShield, (client.state.shield || 0) + 25), maxShield };
             send(socket, { type: "health", health: client.state.health, shield: client.state.shield });
           } else if (pickup.type === "medkit") {
             client.state = { ...client.state, health: Math.min(client.state.maxHealth || 200, (client.state.health || 200) + 60) };
