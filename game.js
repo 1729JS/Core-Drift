@@ -1831,34 +1831,25 @@ function drawFistWeapon(punchTimer, punchDuration, colors = {}) {
   const windup = punching ? Math.max(0, 1 - progress * 3) : 0;
   const extension = punching ? Math.sin(progress * Math.PI) : 0;
   const snap = punching ? Math.min(1, progress * 1.7) : 0;
-  const armStart = player.radius + 4;
-  const reach = player.radius + 16 - windup * 6 + extension * 18;
-  const fistSquash = 1 + extension * 0.18;
-  const swingAngle = -0.22 + snap * 0.38 - extension * 0.16;
+  const reach = player.radius + 10 - windup * 3 + extension * 10;
+  const fistSquash = 1 + extension * 0.12;
+  const swingAngle = -0.08 + snap * 0.16 - extension * 0.08;
 
   ctx.save();
   ctx.rotate(swingAngle);
 
   if (punching) {
     ctx.strokeStyle = palette.trail;
-    ctx.lineWidth = 8;
+    ctx.lineWidth = 5;
     ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.moveTo(armStart, 0);
-    ctx.lineTo(reach + 10, 0);
+    ctx.moveTo(player.radius + 2, 0);
+    ctx.lineTo(reach + 7, 0);
     ctx.stroke();
   }
 
-  ctx.fillStyle = palette.fill;
-  ctx.strokeStyle = palette.stroke;
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.roundRect(armStart, -6, Math.max(10, reach - armStart + 8), 12, 6);
-  ctx.fill();
-  ctx.stroke();
-
   ctx.save();
-  ctx.translate(reach + 10, 0);
+  ctx.translate(reach + 6, 0);
   ctx.scale(fistSquash, 1 / fistSquash);
   ctx.fillStyle = palette.fill;
   ctx.strokeStyle = palette.darkStroke;
