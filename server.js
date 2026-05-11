@@ -9,6 +9,7 @@ const clients = new Map();
 const world = { width: 3600, height: 3600 };
 const crates = [];
 const pickups = [];
+const handledDropIds = new Set();
 let nextEntityId = 1;
 
 const mimeTypes = {
@@ -264,10 +265,17 @@ server.on("upgrade", (request, socket) => {
         const allowedTypes = new Set(["knife", "glock", "awm", "armor", "medkit"]);
 
         if (client?.state && allowedTypes.has(pickup.type)) {
+          if (pickup.dropId && handledDropIds.has(pickup.dropId)) {
+            continue;
+          }
+
           const x = clamp(Number(pickup.x), 24, world.width - 24);
           const y = clamp(Number(pickup.y), 24, world.height - 24);
 
           if (Math.hypot(client.state.x - x, client.state.y - y) <= 1400) {
+            if (pickup.dropId) {
+              handledDropIds.add(pickup.dropId);
+            }
             spawnPickup(x, y, pickup.type, {
               count: Math.max(1, Number(pickup.count || 1)),
               ammo: Math.max(0, Number(pickup.ammo || 0)),

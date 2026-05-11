@@ -118,6 +118,7 @@ let socket = null;
 let localClientId = null;
 let lastNetworkSend = 0;
 let sharedWorldActive = false;
+let nextLocalBulletId = 1;
 
 const remotePlayers = new Map();
 const remoteBullets = [];
@@ -241,6 +242,10 @@ function getBoxHitPoint(circle, box) {
 
 function getPlayerDamageCapacity() {
   return Math.max(0, player.health) + Math.max(0, player.shield);
+}
+
+function getRemoteDamageCapacity(remote) {
+  return Math.max(0, remote.health || 0) + Math.max(0, remote.shield || 0);
 }
 
 function applyBulletKnockback(damage, vx, vy) {
@@ -784,6 +789,7 @@ function fireBullet() {
   const barrelLength = isGlock ? player.radius + 22 : player.radius + 48;
 
   const bullet = {
+    id: `${localClientId || "local"}-${nextLocalBulletId++}`,
     x: player.x + Math.cos(angle) * barrelLength,
     y: player.y + Math.sin(angle) * barrelLength,
     vx: Math.cos(angle) * weapon.bulletSpeed + player.vx * 0.18,
@@ -792,6 +798,7 @@ function fireBullet() {
     life: weapon.bulletLife,
     damage: weapon.damage,
     weapon: isGlock ? "glock" : "awm",
+    hitIds: [],
   };
 
   bullets.push(bullet);
@@ -864,6 +871,7 @@ function throwKnife() {
   const damage = Math.round(weapons.knife.damage + (200 - weapons.knife.damage) * chargeRatio);
 
   const bullet = {
+    id: `${localClientId || "local"}-${nextLocalBulletId++}`,
     x: player.x + Math.cos(angle) * (player.radius + 18),
     y: player.y + Math.sin(angle) * (player.radius + 18),
     vx: Math.cos(angle) * speed + player.vx * 0.12,
@@ -873,8 +881,11 @@ function throwKnife() {
     damage,
     angle,
     weapon: "knife",
-    pickup: { type: "knife", count: 1 },
+    pickup: { type: "knife", count: 1, dropId: null },
+    hitIds: [],
   };
+
+  bullet.pickup.dropId = bullet.id;
 
   bullets.push(bullet);
   sendNetwork("shot", { bullet });
@@ -1033,6 +1044,38 @@ function update(delta) {
       }
     }
 
+    if (!bulletSpent && sharedWorldActive) {
+      for (const [remoteId, remote] of remotePlayers) {
+        if (bullet.hitIds?.includes(remoteId)) {
+          continue;
+        }
+
+        const remoteX = remote.renderX ?? remote.x;
+        const remoteY = remote.renderY ?? remote.y;
+
+        if (Math.hypot(bullet.x - remoteX, bullet.y - remoteY) > bullet.radius + player.radius) {
+          continue;
+        }
+
+        if (bullet.weapon === "knife") {
+          bullet.hitIds.push(remoteId);
+          knifeDropPoint = { x: bullet.x, y: bullet.y };
+          bulletSpent = true;
+          break;
+        }
+
+        const absorbed = Math.min(bullet.damage, getRemoteDamageCapacity(remote));
+        bullet.hitIds.push(remoteId);
+        bullet.damage -= absorbed;
+
+        if (bullet.damage <= 0 || absorbed <= 0) {
+          bulletSpent = true;
+        }
+
+        break;
+      }
+    }
+
     const expired = bullet.life <= 0 || bullet.x < -80 || bullet.x > world.width + 80 || bullet.y < -80 || bullet.y > world.height + 80;
 
     if (bullet.weapon === "knife" && (hitCrate || expired)) {
@@ -1050,12 +1093,13 @@ function update(delta) {
     bullet.y += bullet.vy * delta;
     bullet.life -= delta;
 
-    const hitPlayer = Math.hypot(bullet.x - player.x, bullet.y - player.y) <= bullet.radius + player.radius;
+    const hitPlayer = !bullet.hitLocal && Math.hypot(bullet.x - player.x, bullet.y - player.y) <= bullet.radius + player.radius;
     const expired = bullet.life <= 0 || bullet.x < -80 || bullet.x > world.width + 80 || bullet.y < -80 || bullet.y > world.height + 80;
     let bulletSpent = false;
 
     if (hitPlayer) {
       const absorbed = Math.min(bullet.damage, getPlayerDamageCapacity());
+      bullet.hitLocal = true;
 
       if (absorbed > 0) {
         applyDamage(absorbed, bullet.ownerId, { vx: bullet.vx, vy: bullet.vy });
