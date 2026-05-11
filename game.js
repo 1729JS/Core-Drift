@@ -1722,7 +1722,13 @@ function drawRemotePlayers(time) {
     } else if (remote.selectedWeapon === "knife") {
       drawKnifeWeapon(remote.swingTimer || 0, remote.swingDuration || weapons.knife.swingDuration);
     } else {
-      drawFistWeapon(remote.punchTimer || 0, remote.punchDuration || weapons.fist.swingDuration);
+      drawFistWeapon(remote.punchTimer || 0, remote.punchDuration || weapons.fist.swingDuration, {
+        fill: "#ef6f8f",
+        stroke: "#7a2738",
+        darkStroke: "#5f1f2f",
+        highlight: "#ffb0c2",
+        trail: "rgba(239, 111, 143, 0.28)",
+      });
     }
 
     ctx.rotate(-aimAngle);
@@ -1812,13 +1818,21 @@ function drawKnifeWeapon(swingTimer, swingDuration) {
   ctx.restore();
 }
 
-function drawFistWeapon(punchTimer, punchDuration) {
+function drawFistWeapon(punchTimer, punchDuration, colors = {}) {
+  const palette = {
+    fill: colors.fill || "#58a6ff",
+    stroke: colors.stroke || "#1b496f",
+    darkStroke: colors.darkStroke || "#153d5f",
+    highlight: colors.highlight || "#8fd0ff",
+    trail: colors.trail || "rgba(88, 166, 255, 0.28)",
+  };
   const punching = punchTimer > 0;
   const progress = punching ? clamp(1 - punchTimer / punchDuration, 0, 1) : 0;
   const windup = punching ? Math.max(0, 1 - progress * 3) : 0;
   const extension = punching ? Math.sin(progress * Math.PI) : 0;
   const snap = punching ? Math.min(1, progress * 1.7) : 0;
-  const reach = player.radius + 8 - windup * 12 + extension * 32;
+  const armStart = player.radius + 4;
+  const reach = player.radius + 16 - windup * 6 + extension * 18;
   const fistSquash = 1 + extension * 0.18;
   const swingAngle = -0.22 + snap * 0.38 - extension * 0.16;
 
@@ -1826,35 +1840,35 @@ function drawFistWeapon(punchTimer, punchDuration) {
   ctx.rotate(swingAngle);
 
   if (punching) {
-    ctx.strokeStyle = "rgba(88, 166, 255, 0.28)";
+    ctx.strokeStyle = palette.trail;
     ctx.lineWidth = 8;
     ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.moveTo(player.radius - 10, 0);
+    ctx.moveTo(armStart, 0);
     ctx.lineTo(reach + 10, 0);
     ctx.stroke();
   }
 
-  ctx.fillStyle = "#58a6ff";
-  ctx.strokeStyle = "#1b496f";
+  ctx.fillStyle = palette.fill;
+  ctx.strokeStyle = palette.stroke;
   ctx.lineWidth = 4;
   ctx.beginPath();
-  ctx.roundRect(player.radius - 5, -6, Math.max(12, reach - player.radius + 8), 12, 6);
+  ctx.roundRect(armStart, -6, Math.max(10, reach - armStart + 8), 12, 6);
   ctx.fill();
   ctx.stroke();
 
   ctx.save();
   ctx.translate(reach + 10, 0);
   ctx.scale(fistSquash, 1 / fistSquash);
-  ctx.fillStyle = "#58a6ff";
-  ctx.strokeStyle = "#153d5f";
+  ctx.fillStyle = palette.fill;
+  ctx.strokeStyle = palette.darkStroke;
   ctx.lineWidth = 4;
   ctx.beginPath();
   ctx.roundRect(-8, -12, 20, 24, 8);
   ctx.fill();
   ctx.stroke();
 
-  ctx.fillStyle = "#8fd0ff";
+  ctx.fillStyle = palette.highlight;
   ctx.beginPath();
   ctx.roundRect(-4, -8, 5, 5, 2);
   ctx.roundRect(-4, -2, 5, 5, 2);
