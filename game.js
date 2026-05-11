@@ -647,6 +647,10 @@ function connectMultiplayer() {
     } else if (message.type === "health") {
       player.health = message.health;
       player.shield = message.shield;
+      if (message.knockback) {
+        player.vx += message.knockback.vx;
+        player.vy += message.knockback.vy;
+      }
 
       if (player.health <= 0) {
         showStartScreen();
@@ -717,6 +721,10 @@ function getPlayerSnapshot() {
 }
 
 function handleRemoteMelee(attack) {
+  if (sharedWorldActive) {
+    return;
+  }
+
   const distance = Math.hypot(player.x - attack.x, player.y - attack.y);
 
   if (distance > attack.range + player.radius) {
@@ -1026,8 +1034,11 @@ function update(delta) {
       if (circleHitsBox(bullet, crate)) {
         const hitPoint = getBoxHitPoint(bullet, crate);
         const absorbed = bullet.weapon === "knife" ? bullet.damage : Math.min(bullet.damage, crate.hp);
-        damageCrate(crateIndex, absorbed);
         hitCrate = true;
+
+        if (!sharedWorldActive) {
+          damageCrate(crateIndex, absorbed);
+        }
 
         if (bullet.weapon === "knife") {
           knifeDropPoint = hitPoint;
@@ -1078,7 +1089,7 @@ function update(delta) {
 
     const expired = bullet.life <= 0 || bullet.x < -80 || bullet.x > world.width + 80 || bullet.y < -80 || bullet.y > world.height + 80;
 
-    if (bullet.weapon === "knife" && (hitCrate || expired)) {
+    if (bullet.weapon === "knife" && (expired || (hitCrate && !sharedWorldActive))) {
       dropPickupAt(knifeDropPoint?.x ?? bullet.x, knifeDropPoint?.y ?? bullet.y, bullet.pickup || { type: "knife", count: 1 });
     }
 
@@ -1122,13 +1133,17 @@ function update(delta) {
       const absorbed = Math.min(bullet.damage, getPlayerDamageCapacity());
       bullet.hitLocal = true;
 
-      if (absorbed > 0) {
+      if (absorbed > 0 && !sharedWorldActive) {
         applyDamage(absorbed, bullet.ownerId, { vx: bullet.vx, vy: bullet.vy });
+        bullet.damage -= absorbed;
+      } else if (absorbed > 0) {
         bullet.damage -= absorbed;
       }
 
       if (bullet.weapon === "knife") {
-        dropPickupAt(bullet.x, bullet.y, bullet.pickup || { type: "knife", count: 1 });
+        if (!sharedWorldActive) {
+          dropPickupAt(bullet.x, bullet.y, bullet.pickup || { type: "knife", count: 1 });
+        }
         bulletSpent = true;
       } else if (bullet.damage <= 0 || absorbed <= 0) {
         bulletSpent = true;

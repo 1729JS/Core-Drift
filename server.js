@@ -9,8 +9,10 @@ const clients = new Map();
 const world = { width: 3600, height: 3600 };
 const crates = [];
 const pickups = [];
+const bullets = [];
 const handledDropIds = new Set();
 let nextEntityId = 1;
+let lastTick = Date.now();
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -20,6 +22,22 @@ const mimeTypes = {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function circleHitsBox(circle, box) {
+  const half = box.size / 2;
+  const closestX = clamp(circle.x, box.x - half, box.x + half);
+  const closestY = clamp(circle.y, box.y - half, box.y + half);
+  return Math.hypot(circle.x - closestX, circle.y - closestY) <= circle.radius;
+}
+
+function getBoxHitPoint(circle, box) {
+  const half = box.size / 2;
+
+  return {
+    x: clamp(circle.x, box.x - half, box.x + half),
+    y: clamp(circle.y, box.y - half, box.y + half),
+  };
 }
 
 function spawnCrate() {
@@ -79,6 +97,21 @@ function broadcastEffect(effect) {
   broadcast({ type: "effect", effect });
 }
 
+function getDamageCapacity(state) {
+  return Math.max(0, state?.health || 0) + Math.max(0, state?.shield || 0);
+}
+
+function getKnockback(damage, vx, vy) {
+  const length = Math.hypot(vx, vy);
+
+  if (length <= 0) {
+    return null;
+  }
+
+  const force = clamp(110 + damage * 3.2, 150, 620);
+  return { vx: (vx / length) * force, vy: (vy / length) * force };
+}
+
 function applyDamageToState(state, amount) {
   if (!state) return state;
 
@@ -96,6 +129,176 @@ function applyDamageToState(state, amount) {
   }
 
   return next;
+}
+
+function damageClient(targetId, amount, sourceId = null, knockback = null) {
+  const client = clients.get(targetId);
+
+  if (!client?.state || amount <= 0) {
+    return false;
+  }
+
+  const previousHealth = client.state.health || 0;
+  const previousShield = client.state.shield || 0;
+  client.state = applyDamageToState(client.state, amount);
+  send(client.socket, { type: "health", health: client.state.health, shield: client.state.shield || 0, knockback });
+  broadcast({ type: "state", id: targetId, state: client.state }, targetId);
+
+  if ((client.state.health || 0) < previousHealth || (client.state.shield || 0) < previousShield) {
+    const source = clients.get(sourceId);
+    const effect = { type: "playerHit", x: client.state.x, y: client.state.y };
+    send(client.socket, { type: "effect", effect });
+    if (source && source !== client) {
+      send(source.socket, { type: "effect", effect });
+    }
+  }
+
+  if (client.state.health <= 0) {
+    broadcast({ type: "dead", id: targetId }, targetId);
+  }
+
+  return true;
+}
+
+function damageCrate(crate, amount) {
+  const destroyed = crate.hp - amount <= 0;
+  crate.hp -= amount;
+
+  if (crate.hp <= 0) {
+    spawnPickup(crate.x, crate.y);
+    crates.splice(crates.indexOf(crate), 1);
+  }
+
+  broadcastEffect({ type: destroyed ? "crateBreak" : "crateHit", x: crate.x, y: crate.y });
+  broadcastWorld();
+}
+
+function handleMelee(ownerId, attack) {
+  const owner = clients.get(ownerId);
+
+  if (!owner?.state) {
+    return;
+  }
+
+  for (const [targetId, client] of clients) {
+    if (targetId === ownerId || !client.state || client.state.health <= 0) {
+      continue;
+    }
+
+    const distance = Math.hypot(client.state.x - attack.x, client.state.y - attack.y);
+
+    if (distance > attack.range + 24) {
+      continue;
+    }
+
+    const targetAngle = Math.atan2(client.state.y - attack.y, client.state.x - attack.x);
+    const angleDiff = Math.atan2(Math.sin(targetAngle - attack.angle), Math.cos(targetAngle - attack.angle));
+
+    if (Math.abs(angleDiff) <= attack.arc / 2) {
+      damageClient(targetId, attack.damage, ownerId);
+    }
+  }
+}
+
+function updateBullets(delta) {
+  let worldChanged = false;
+
+  for (let index = bullets.length - 1; index >= 0; index -= 1) {
+    const bullet = bullets[index];
+    bullet.x += bullet.vx * delta;
+    bullet.y += bullet.vy * delta;
+    bullet.life -= delta;
+
+    let spent = false;
+
+    for (let crateIndex = crates.length - 1; crateIndex >= 0; crateIndex -= 1) {
+      const crate = crates[crateIndex];
+
+      if (!circleHitsBox(bullet, crate)) {
+        continue;
+      }
+
+      if (bullet.weapon === "knife") {
+        const hitPoint = getBoxHitPoint(bullet, crate);
+        const dropId = bullet.pickup?.dropId || bullet.id;
+        if (!handledDropIds.has(dropId)) {
+          handledDropIds.add(dropId);
+          spawnPickup(hitPoint.x, hitPoint.y, "knife", { count: 1 });
+          worldChanged = true;
+        }
+        spent = true;
+        break;
+      }
+
+      const absorbed = Math.min(bullet.damage, Math.max(0, crate.hp));
+      damageCrate(crate, absorbed);
+      bullet.damage -= absorbed;
+      worldChanged = true;
+
+      if (bullet.damage <= 0 || absorbed <= 0) {
+        spent = true;
+      }
+
+      break;
+    }
+
+    if (!spent) {
+      for (const [targetId, client] of clients) {
+        if (targetId === bullet.ownerId || !client.state || client.state.health <= 0 || bullet.hitIds.has(targetId)) {
+          continue;
+        }
+
+        if (Math.hypot(bullet.x - client.state.x, bullet.y - client.state.y) > bullet.radius + 24) {
+          continue;
+        }
+
+        bullet.hitIds.add(targetId);
+
+        if (bullet.weapon === "knife") {
+          damageClient(targetId, bullet.damage, bullet.ownerId, getKnockback(bullet.damage, bullet.vx, bullet.vy));
+          const dropId = bullet.pickup?.dropId || bullet.id;
+          if (!handledDropIds.has(dropId)) {
+            handledDropIds.add(dropId);
+            spawnPickup(bullet.x, bullet.y, "knife", { count: 1 });
+            worldChanged = true;
+          }
+          spent = true;
+          break;
+        }
+
+        const absorbed = Math.min(bullet.damage, getDamageCapacity(client.state));
+        if (absorbed > 0) {
+          damageClient(targetId, absorbed, bullet.ownerId, getKnockback(absorbed, bullet.vx, bullet.vy));
+          bullet.damage -= absorbed;
+        }
+
+        if (bullet.damage <= 0 || absorbed <= 0) {
+          spent = true;
+        }
+
+        break;
+      }
+    }
+
+    const expired = bullet.life <= 0 || bullet.x < -80 || bullet.x > world.width + 80 || bullet.y < -80 || bullet.y > world.height + 80;
+
+    if (expired && bullet.weapon === "knife") {
+      const dropId = bullet.pickup?.dropId || bullet.id;
+      if (!handledDropIds.has(dropId)) {
+        handledDropIds.add(dropId);
+        spawnPickup(clamp(bullet.x, 24, world.width - 24), clamp(bullet.y, 24, world.height - 24), "knife", { count: 1 });
+        worldChanged = true;
+      }
+    }
+
+    if (spent || expired) {
+      bullets.splice(index, 1);
+    }
+  }
+
+  if (worldChanged) {
+    broadcastWorld();
+  }
 }
 
 createCrates();
@@ -256,8 +459,15 @@ server.on("upgrade", (request, socket) => {
           broadcast({ type: "state", id, state: client.state }, id);
         }
       } else if (message.type === "shot") {
+        bullets.push({
+          ...message.bullet,
+          ownerId: id,
+          id: message.bullet?.id || `${id}-${nextEntityId++}`,
+          hitIds: new Set(),
+        });
         broadcast({ type: "shot", id, bullet: message.bullet }, id);
       } else if (message.type === "melee") {
+        handleMelee(id, message.attack);
         broadcast({ type: "melee", id, attack: message.attack }, id);
       } else if (message.type === "dropPickup") {
         const client = clients.get(id);
@@ -326,24 +536,7 @@ server.on("upgrade", (request, socket) => {
       } else if (message.type === "damageMe") {
         const client = clients.get(id);
         if (client?.state) {
-          const previousHealth = client.state.health || 0;
-          const previousShield = client.state.shield || 0;
-          client.state = applyDamageToState(client.state, message.damage);
-          send(socket, { type: "health", health: client.state.health, shield: client.state.shield || 0 });
-          broadcast({ type: "state", id, state: client.state }, id);
-
-          if ((client.state.health || 0) < previousHealth || (client.state.shield || 0) < previousShield) {
-            const source = clients.get(message.sourceId);
-            const effect = { type: "playerHit", x: client.state.x, y: client.state.y };
-            send(socket, { type: "effect", effect });
-            if (source && source !== client) {
-              send(source.socket, { type: "effect", effect });
-            }
-          }
-
-          if (client.state.health <= 0) {
-            broadcast({ type: "dead", id }, id);
-          }
+          damageClient(id, message.damage, message.sourceId);
         }
       } else if (message.type === "dead") {
         broadcast({ type: "dead", id }, id);
@@ -372,3 +565,10 @@ setInterval(() => {
     broadcastWorld();
   }
 }, 10000);
+
+setInterval(() => {
+  const now = Date.now();
+  const delta = Math.min((now - lastTick) / 1000, 0.05);
+  lastTick = now;
+  updateBullets(delta);
+}, 1000 / 60);
