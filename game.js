@@ -232,6 +232,7 @@ function circleHitsBox(circle, box) {
 
 function damageCrate(index, damage) {
   const crate = crates[index];
+  const destroyed = crate && crate.hp - damage <= 0;
 
   if (sharedWorldActive && crate?.id) {
     sendNetwork("crateDamage", { id: crate.id, damage });
@@ -243,9 +244,13 @@ function damageCrate(index, damage) {
   if (crate.hp <= 0) {
     spawnPickup(crate.x, crate.y);
     crates.splice(index, 1);
+    playCrateBreakSound();
     return true;
   }
 
+  if (!destroyed) {
+    playCrateHitSound();
+  }
   return false;
 }
 
@@ -265,9 +270,9 @@ function spawnPickup(x, y, forcedType = null, data = {}) {
   });
 }
 
-function applyDamage(amount) {
+function applyDamage(amount, sourceId = null) {
   if (sharedWorldActive) {
-    sendNetwork("damageMe", { damage: amount });
+    sendNetwork("damageMe", { damage: amount, sourceId });
     return;
   }
 
@@ -282,6 +287,8 @@ function applyDamage(amount) {
   if (remaining > 0) {
     player.health = Math.max(0, player.health - remaining);
   }
+
+  playPlayerHitSound();
 
   if (player.health <= 0) {
     sendNetwork("dead", {});
@@ -514,6 +521,42 @@ function playPickupSound(type) {
   playTone({ frequency: base * 1.5, duration: 0.12, type: "triangle", gain: 0.05, when: 0.06 });
 }
 
+function playCrateHitSound() {
+  playNoise({ duration: 0.07, gain: 0.08, filterFrequency: 520 });
+  playTone({ frequency: 145, duration: 0.08, type: "square", gain: 0.04 });
+}
+
+function playCrateBreakSound() {
+  playNoise({ duration: 0.18, gain: 0.13, filterFrequency: 360 });
+  playTone({ frequency: 95, duration: 0.16, type: "sawtooth", gain: 0.075 });
+  playTone({ frequency: 210, duration: 0.06, type: "triangle", gain: 0.045, when: 0.05 });
+}
+
+function playPlayerHitSound() {
+  playNoise({ duration: 0.09, gain: 0.1, filterFrequency: 680 });
+  playTone({ frequency: 240, duration: 0.07, type: "square", gain: 0.055 });
+}
+
+function playEffect(effect) {
+  if (!effect) {
+    return;
+  }
+
+  const distance = Math.hypot((effect.x ?? player.x) - player.x, (effect.y ?? player.y) - player.y);
+
+  if (distance > 1500) {
+    return;
+  }
+
+  if (effect.type === "crateHit") {
+    playCrateHitSound();
+  } else if (effect.type === "crateBreak") {
+    playCrateBreakSound();
+  } else if (effect.type === "playerHit") {
+    playPlayerHitSound();
+  }
+}
+
 function connectMultiplayer() {
   if (socket || location.protocol === "file:") {
     return;
@@ -542,11 +585,19 @@ function connectMultiplayer() {
         ownerId: message.id,
       });
     } else if (message.type === "melee") {
+      message.attack.ownerId = message.id;
+      const remote = remotePlayers.get(message.id);
+      if (remote) {
+        remote.swingTimer = message.attack.swingDuration || weapons.knife.swingDuration;
+        remote.swingDuration = message.attack.swingDuration || weapons.knife.swingDuration;
+      }
       handleRemoteMelee(message.attack);
     } else if (message.type === "world") {
       sharedWorldActive = true;
       crates.splice(0, crates.length, ...message.world.crates);
       pickups.splice(0, pickups.length, ...message.world.pickups);
+    } else if (message.type === "effect") {
+      playEffect(message.effect);
     } else if (message.type === "pickupGranted") {
       applyPickupItem(message.item);
     } else if (message.type === "health") {
@@ -614,6 +665,8 @@ function getPlayerSnapshot() {
     maxShield: player.maxShield,
     selectedWeapon: weapons.slots[weapons.selectedSlot],
     aimAngle: getAimAngle(),
+    swingTimer: player.swingTimer,
+    swingDuration: weapons.knife.swingDuration,
     knifeCharging: player.knifeCharging,
     knifeCharge: player.knifeCharge,
   };
@@ -630,7 +683,7 @@ function handleRemoteMelee(attack) {
   const angleDiff = Math.atan2(Math.sin(targetAngle - attack.angle), Math.cos(targetAngle - attack.angle));
 
   if (Math.abs(angleDiff) <= attack.arc / 2) {
-    applyDamage(attack.damage);
+    applyDamage(attack.damage, attack.ownerId);
   }
 }
 
@@ -732,6 +785,7 @@ function swingKnife() {
       range: knife.range,
       arc: knife.arc,
       damage: knife.damage,
+      swingDuration: knife.swingDuration,
     },
   });
 
@@ -943,7 +997,7 @@ function update(delta) {
     const expired = bullet.life <= 0 || bullet.x < -80 || bullet.x > world.width + 80 || bullet.y < -80 || bullet.y > world.height + 80;
 
     if (hitPlayer) {
-      applyDamage(bullet.damage);
+      applyDamage(bullet.damage, bullet.ownerId);
     }
 
     if (hitPlayer || expired) {
@@ -1393,6 +1447,7 @@ function drawRemotePlayers(time) {
     remote.renderX += (remote.x - remote.renderX) * 0.22;
     remote.renderY += (remote.y - remote.renderY) * 0.22;
     remote.renderAimAngle = lerpAngle(remote.renderAimAngle, remote.aimAngle || 0, 0.24);
+    remote.swingTimer = Math.max(0, (remote.swingTimer || 0) - 1 / 60);
 
     const x = worldToScreenX(remote.renderX);
     const y = worldToScreenY(remote.renderY);
@@ -1432,16 +1487,7 @@ function drawRemotePlayers(time) {
       ctx.roundRect(5, -18, 32, 8, 4);
       ctx.fill();
     } else if (remote.selectedWeapon === "knife") {
-      ctx.fillStyle = "#d9e0e3";
-      ctx.strokeStyle = "#55666f";
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(player.radius - 1, -7);
-      ctx.lineTo(player.radius + 32, -2);
-      ctx.lineTo(player.radius + 10, 10);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
+      drawKnifeWeapon(remote.swingTimer || 0, remote.swingDuration || weapons.knife.swingDuration);
     }
 
     ctx.rotate(-aimAngle);
@@ -1490,6 +1536,45 @@ function drawRemotePlayers(time) {
   }
 }
 
+function drawKnifeWeapon(swingTimer, swingDuration) {
+  const swinging = swingTimer > 0;
+  const progress = swinging ? clamp(1 - swingTimer / swingDuration, 0, 1) : 1;
+  const eased = 1 - Math.pow(1 - progress, 3);
+  const knifeAngle = swinging ? -1.18 + eased * 2.22 : -0.12;
+  const reach = player.radius + (swinging ? 28 : 22);
+
+  if (swinging) {
+    ctx.strokeStyle = "rgba(246, 242, 233, 0.58)";
+    ctx.lineWidth = 7;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.arc(player.radius + 8, 0, 38, -1.15, -1.15 + eased * 2.1);
+    ctx.stroke();
+  }
+
+  ctx.save();
+  ctx.rotate(knifeAngle);
+  ctx.fillStyle = "#d9e0e3";
+  ctx.strokeStyle = "#55666f";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(reach - 6, -8);
+  ctx.lineTo(reach + 36, -1);
+  ctx.lineTo(reach + 7, 11);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = "#20272b";
+  ctx.strokeStyle = "#0d1114";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(player.radius - 8, -5, 22, 10, 3);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawPlayer(time) {
   const x = worldToScreenX(player.x);
   const y = worldToScreenY(player.y);
@@ -1502,25 +1587,7 @@ function drawPlayer(time) {
   ctx.rotate(aimAngle);
 
   if (selectedWeapon === "knife") {
-    if (player.swingTimer > 0) {
-      const swingProgress = 1 - player.swingTimer / weapons.knife.swingDuration;
-      ctx.strokeStyle = "rgba(246, 242, 233, 0.66)";
-      ctx.lineWidth = 8;
-      ctx.beginPath();
-      ctx.arc(16, 0, weapons.knife.range * 0.72, -0.8 + swingProgress * 0.4, 0.8 + swingProgress * 0.4);
-      ctx.stroke();
-    }
-
-    ctx.fillStyle = "#d9e0e3";
-    ctx.strokeStyle = "#55666f";
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(player.radius - 1, -7);
-    ctx.lineTo(player.radius + 36, -2);
-    ctx.lineTo(player.radius + 10, 10);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
+    drawKnifeWeapon(player.swingTimer, weapons.knife.swingDuration);
   } else if (selectedWeapon === "glock") {
     ctx.fillStyle = "#080d10";
     ctx.beginPath();

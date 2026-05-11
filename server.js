@@ -74,6 +74,10 @@ function broadcastWorld() {
   broadcast({ type: "world", world: getWorldState() });
 }
 
+function broadcastEffect(effect) {
+  broadcast({ type: "effect", effect });
+}
+
 function applyDamageToState(state, amount) {
   if (!state) return state;
 
@@ -275,11 +279,13 @@ server.on("upgrade", (request, socket) => {
       } else if (message.type === "crateDamage") {
         const crate = crates.find((candidate) => candidate.id === message.id);
         if (crate) {
+          const destroyed = crate.hp - message.damage <= 0;
           crate.hp -= message.damage;
           if (crate.hp <= 0) {
             spawnPickup(crate.x, crate.y);
             crates.splice(crates.indexOf(crate), 1);
           }
+          broadcastEffect({ type: destroyed ? "crateBreak" : "crateHit", x: crate.x, y: crate.y });
           broadcastWorld();
         }
       } else if (message.type === "pickupRequest") {
@@ -303,9 +309,20 @@ server.on("upgrade", (request, socket) => {
       } else if (message.type === "damageMe") {
         const client = clients.get(id);
         if (client?.state) {
+          const previousHealth = client.state.health || 0;
+          const previousShield = client.state.shield || 0;
           client.state = applyDamageToState(client.state, message.damage);
           send(socket, { type: "health", health: client.state.health, shield: client.state.shield || 0 });
           broadcast({ type: "state", id, state: client.state }, id);
+
+          if ((client.state.health || 0) < previousHealth || (client.state.shield || 0) < previousShield) {
+            const source = clients.get(message.sourceId);
+            const effect = { type: "playerHit", x: client.state.x, y: client.state.y };
+            send(socket, { type: "effect", effect });
+            if (source && source !== client) {
+              send(source.socket, { type: "effect", effect });
+            }
+          }
 
           if (client.state.health <= 0) {
             broadcast({ type: "dead", id }, id);
