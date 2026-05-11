@@ -219,6 +219,10 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+function lerpAngle(current, target, amount) {
+  return current + Math.atan2(Math.sin(target - current), Math.cos(target - current)) * amount;
+}
+
 function circleHitsBox(circle, box) {
   const half = box.size / 2;
   const closestX = clamp(circle.x, box.x - half, box.x + half);
@@ -245,14 +249,17 @@ function damageCrate(index, damage) {
   return false;
 }
 
-function spawnPickup(x, y, forcedType = null) {
+function spawnPickup(x, y, forcedType = null, data = {}) {
   const types = ["knife", "glock", "awm", "armor", "medkit"];
-  const type = forcedType || types[Math.floor(Math.random() * types.length)];
+  const type = forcedType || data.type || types[Math.floor(Math.random() * types.length)];
 
   pickups.push({
     x,
     y,
     type,
+    count: data.count,
+    ammo: data.ammo,
+    magAmmo: data.magAmmo,
     radius: 18,
     bob: Math.random() * Math.PI * 2,
   });
@@ -283,12 +290,51 @@ function applyDamage(amount) {
   }
 }
 
-function addWeaponToInventory(weaponName) {
+function getPickupType(item) {
+  return typeof item === "string" ? item : item?.type;
+}
+
+function getPickupWeaponAmmo(item, weaponName) {
+  const hasSavedAmmo = item && typeof item === "object" && (Number.isFinite(item.ammo) || Number.isFinite(item.magAmmo));
+
+  if (hasSavedAmmo) {
+    return {
+      ammo: Math.max(0, Number(item.ammo || 0)),
+      magAmmo: Math.max(0, Number(item.magAmmo || 0)),
+      saved: true,
+    };
+  }
+
+  return {
+    ammo: weapons[weaponName].magazineSize,
+    magAmmo: 0,
+    saved: false,
+  };
+}
+
+function canCollectPickup(item) {
+  const type = getPickupType(item);
+
+  if (type === "armor" || type === "medkit") {
+    return true;
+  }
+
+  if (type === "knife" || type === "glock" || type === "awm") {
+    return Boolean([1, 2, 3].find((slot) => weapons.slots[slot] === type) || [1, 2, 3].find((slot) => !weapons.slots[slot]));
+  }
+
+  return false;
+}
+
+function addWeaponToInventory(item) {
+  const weaponName = getPickupType(item);
+
   if (weaponName === "knife") {
+    const count = Math.max(1, Number(typeof item === "object" ? item.count || 1 : 1));
     const existingSlot = [1, 2, 3].find((slot) => weapons.slots[slot] === "knife");
 
     if (existingSlot) {
-      weapons.knife.count += 1;
+      weapons.knife.count += count;
       return true;
     }
 
@@ -299,14 +345,15 @@ function addWeaponToInventory(weaponName) {
     }
 
     weapons.slots[emptySlot] = "knife";
-    weapons.knife.count = Math.max(1, weapons.knife.count + 1);
+    weapons.knife.count = Math.max(0, weapons.knife.count) + count;
     return true;
   }
 
   const existingSlot = [1, 2, 3].find((slot) => weapons.slots[slot] === weaponName);
+  const pickupAmmo = getPickupWeaponAmmo(item, weaponName);
 
   if (existingSlot) {
-    weapons[weaponName].ammo += weapons[weaponName].magazineSize;
+    weapons[weaponName].ammo += pickupAmmo.ammo + pickupAmmo.magAmmo;
     weapons[weaponName].reloadTimer = 0;
     return true;
   }
@@ -322,8 +369,10 @@ function addWeaponToInventory(weaponName) {
   const targetSlot = weapons.slots[preferredSlot] ? (weapons.slots[fallbackSlot] ? emptySlot : fallbackSlot) : preferredSlot;
 
   weapons.slots[targetSlot] = weaponName;
-  weapons[weaponName].ammo += weapons[weaponName].magazineSize;
-  if (weapons[weaponName].magAmmo <= 0) {
+  weapons[weaponName].ammo = pickupAmmo.ammo;
+  weapons[weaponName].magAmmo = pickupAmmo.saved ? pickupAmmo.magAmmo : 0;
+
+  if (weapons[weaponName].magAmmo <= 0 && weapons[weaponName].ammo > 0) {
     const loaded = Math.min(weapons[weaponName].magazineSize, weapons[weaponName].ammo);
     weapons[weaponName].magAmmo = loaded;
     weapons[weaponName].ammo -= loaded;
@@ -335,6 +384,10 @@ function addWeaponToInventory(weaponName) {
 function collectPickup(index) {
   const pickup = pickups[index];
 
+  if (!canCollectPickup(pickup)) {
+    return;
+  }
+
   if (sharedWorldActive && pickup?.id) {
     sendNetwork("pickupRequest", { id: pickup.id });
     return;
@@ -343,9 +396,9 @@ function collectPickup(index) {
   let collected = false;
 
   if (pickup.type === "knife" || pickup.type === "glock") {
-    collected = addWeaponToInventory(pickup.type);
+    collected = addWeaponToInventory(pickup);
   } else if (pickup.type === "awm") {
-    collected = addWeaponToInventory("awm");
+    collected = addWeaponToInventory(pickup);
   } else if (pickup.type === "armor") {
     player.shield = player.maxShield;
     collected = true;
@@ -363,13 +416,14 @@ function collectPickup(index) {
   updateInventory();
 }
 
-function applyPickupItem(type) {
+function applyPickupItem(item) {
+  const type = getPickupType(item);
   let collected = false;
 
   if (type === "knife" || type === "glock") {
-    collected = addWeaponToInventory(type);
+    collected = addWeaponToInventory(item);
   } else if (type === "awm") {
-    collected = addWeaponToInventory("awm");
+    collected = addWeaponToInventory(item);
   } else if (type === "armor") {
     player.shield = player.maxShield;
     collected = true;
@@ -481,7 +535,7 @@ function connectMultiplayer() {
         sendNetwork("respawn", { state: getPlayerSnapshot() });
       }
     } else if (message.type === "state") {
-      remotePlayers.set(message.id, message.state);
+      setRemotePlayerState(message.id, message.state);
     } else if (message.type === "shot") {
       remoteBullets.push({
         ...message.bullet,
@@ -517,10 +571,36 @@ function connectMultiplayer() {
   });
 }
 
+function setRemotePlayerState(id, state) {
+  const previous = remotePlayers.get(id);
+
+  remotePlayers.set(id, {
+    ...state,
+    renderX: previous?.renderX ?? state.x,
+    renderY: previous?.renderY ?? state.y,
+    renderAimAngle: previous?.renderAimAngle ?? state.aimAngle ?? 0,
+  });
+}
+
 function sendNetwork(type, payload) {
   if (socket && socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify({ type, ...payload }));
   }
+}
+
+function dropPickupAt(x, y, item) {
+  const pickup = {
+    ...item,
+    x: clamp(x, player.radius, world.width - player.radius),
+    y: clamp(y, player.radius, world.height - player.radius),
+  };
+
+  if (sharedWorldActive && socket?.readyState === WebSocket.OPEN) {
+    sendNetwork("dropPickup", { pickup });
+    return;
+  }
+
+  spawnPickup(pickup.x, pickup.y, pickup.type, pickup);
 }
 
 function getPlayerSnapshot() {
@@ -700,6 +780,7 @@ function throwKnife() {
     damage,
     angle,
     weapon: "knife",
+    pickup: { type: "knife", count: 1 },
   };
 
   bullets.push(bullet);
@@ -844,7 +925,7 @@ function update(delta) {
     const expired = bullet.life <= 0 || bullet.x < -80 || bullet.x > world.width + 80 || bullet.y < -80 || bullet.y > world.height + 80;
 
     if (bullet.weapon === "knife" && (hitCrate || expired)) {
-      spawnPickup(clamp(bullet.x, player.radius, world.width - player.radius), clamp(bullet.y, player.radius, world.height - player.radius), "knife");
+      dropPickupAt(bullet.x, bullet.y, bullet.pickup || { type: "knife", count: 1 });
     }
 
     if (hitCrate || expired) {
@@ -895,7 +976,7 @@ function update(delta) {
 
   if (lastNetworkSend <= 0) {
     sendNetwork("state", { state: getPlayerSnapshot() });
-    lastNetworkSend = 0.05;
+    lastNetworkSend = 0.033;
   }
 
   coords.textContent = `${Math.round(player.x)}, ${Math.round(player.y)}`;
@@ -1021,15 +1102,22 @@ function dropSelectedWeapon() {
   }
 
   const angle = getAimAngle();
-  spawnPickup(player.x + Math.cos(angle) * 64, player.y + Math.sin(angle) * 64, selectedWeapon);
+  const dropX = player.x + Math.cos(angle) * 64;
+  const dropY = player.y + Math.sin(angle) * 64;
 
   if (selectedWeapon === "knife") {
-    weapons.knife.count -= 1;
-
-    if (weapons.knife.count <= 0) {
-      weapons.slots[weapons.selectedSlot] = null;
-    }
+    dropPickupAt(dropX, dropY, { type: "knife", count: Math.max(1, weapons.knife.count) });
+    weapons.knife.count = 0;
+    weapons.slots[weapons.selectedSlot] = null;
   } else {
+    dropPickupAt(dropX, dropY, {
+      type: selectedWeapon,
+      ammo: weapons[selectedWeapon].ammo,
+      magAmmo: weapons[selectedWeapon].magAmmo,
+    });
+    weapons[selectedWeapon].ammo = 0;
+    weapons[selectedWeapon].magAmmo = 0;
+    weapons[selectedWeapon].reloadTimer = 0;
     weapons.slots[weapons.selectedSlot] = null;
   }
 
@@ -1302,12 +1390,17 @@ function drawRemoteBullets() {
 
 function drawRemotePlayers(time) {
   for (const remote of remotePlayers.values()) {
-    const x = worldToScreenX(remote.x);
-    const y = worldToScreenY(remote.y);
+    remote.renderX += (remote.x - remote.renderX) * 0.22;
+    remote.renderY += (remote.y - remote.renderY) * 0.22;
+    remote.renderAimAngle = lerpAngle(remote.renderAimAngle, remote.aimAngle || 0, 0.24);
+
+    const x = worldToScreenX(remote.renderX);
+    const y = worldToScreenY(remote.renderY);
+    const aimAngle = remote.renderAimAngle;
 
     ctx.save();
     ctx.translate(x, y);
-    ctx.rotate(remote.aimAngle || 0);
+    ctx.rotate(aimAngle);
 
     if (remote.selectedWeapon === "glock") {
       ctx.fillStyle = "#080d10";
@@ -1320,12 +1413,24 @@ function drawRemotePlayers(time) {
       ctx.fill();
     } else if (remote.selectedWeapon === "awm") {
       ctx.lineCap = "round";
-      ctx.lineWidth = 8;
+      ctx.lineWidth = 9;
       ctx.strokeStyle = "#5f6645";
       ctx.beginPath();
       ctx.moveTo(4, 2);
-      ctx.lineTo(player.radius + 52, 0);
+      ctx.lineTo(player.radius + 38, 0);
       ctx.stroke();
+
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = "#101417";
+      ctx.beginPath();
+      ctx.moveTo(player.radius + 18, 0);
+      ctx.lineTo(player.radius + 66, 0);
+      ctx.stroke();
+
+      ctx.fillStyle = "#0a0d0f";
+      ctx.beginPath();
+      ctx.roundRect(5, -18, 32, 8, 4);
+      ctx.fill();
     } else if (remote.selectedWeapon === "knife") {
       ctx.fillStyle = "#d9e0e3";
       ctx.strokeStyle = "#55666f";
@@ -1339,7 +1444,7 @@ function drawRemotePlayers(time) {
       ctx.stroke();
     }
 
-    ctx.rotate(-(remote.aimAngle || 0));
+    ctx.rotate(-aimAngle);
     ctx.fillStyle = "rgba(0, 0, 0, 0.24)";
     ctx.beginPath();
     ctx.ellipse(0, player.radius + 8, player.radius * 0.92, 8, 0, 0, Math.PI * 2);

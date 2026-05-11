@@ -40,13 +40,18 @@ function spawnCrate() {
   }
 }
 
-function spawnPickup(x, y, forcedType = null) {
+function spawnPickup(x, y, forcedType = null, data = {}) {
   const types = ["knife", "glock", "awm", "armor", "medkit"];
+  const type = forcedType || data.type || types[Math.floor(Math.random() * types.length)];
+
   pickups.push({
     id: nextEntityId++,
     x,
     y,
-    type: forcedType || types[Math.floor(Math.random() * types.length)],
+    type,
+    count: data.count,
+    ammo: data.ammo,
+    magAmmo: data.magAmmo,
     radius: 18,
     bob: Math.random() * Math.PI * 2,
   });
@@ -249,6 +254,24 @@ server.on("upgrade", (request, socket) => {
         broadcast({ type: "shot", id, bullet: message.bullet }, id);
       } else if (message.type === "melee") {
         broadcast({ type: "melee", id, attack: message.attack }, id);
+      } else if (message.type === "dropPickup") {
+        const client = clients.get(id);
+        const pickup = message.pickup || {};
+        const allowedTypes = new Set(["knife", "glock", "awm", "armor", "medkit"]);
+
+        if (client?.state && allowedTypes.has(pickup.type)) {
+          const x = clamp(Number(pickup.x), 24, world.width - 24);
+          const y = clamp(Number(pickup.y), 24, world.height - 24);
+
+          if (Math.hypot(client.state.x - x, client.state.y - y) <= 1400) {
+            spawnPickup(x, y, pickup.type, {
+              count: Math.max(1, Number(pickup.count || 1)),
+              ammo: Math.max(0, Number(pickup.ammo || 0)),
+              magAmmo: Math.max(0, Number(pickup.magAmmo || 0)),
+            });
+            broadcastWorld();
+          }
+        }
       } else if (message.type === "crateDamage") {
         const crate = crates.find((candidate) => candidate.id === message.id);
         if (crate) {
@@ -272,7 +295,7 @@ server.on("upgrade", (request, socket) => {
             client.state = { ...client.state, health: Math.min(client.state.maxHealth || 200, (client.state.health || 200) + 60) };
             send(socket, { type: "health", health: client.state.health, shield: client.state.shield || 0 });
           } else {
-            send(socket, { type: "pickupGranted", item: pickup.type });
+            send(socket, { type: "pickupGranted", item: pickup });
           }
 
           broadcastWorld();
