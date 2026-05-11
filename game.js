@@ -1815,36 +1815,61 @@ function drawKnifeWeapon(swingTimer, swingDuration) {
 function drawFistWeapon(punchTimer, punchDuration) {
   const punching = punchTimer > 0;
   const progress = punching ? clamp(1 - punchTimer / punchDuration, 0, 1) : 0;
-  const thrust = punching ? Math.sin(progress * Math.PI) * 24 : 0;
-  const recoil = punching ? (1 - progress) * 5 : 0;
+  const windup = punching ? Math.max(0, 1 - progress * 3) : 0;
+  const extension = punching ? Math.sin(progress * Math.PI) : 0;
+  const snap = punching ? Math.min(1, progress * 1.7) : 0;
+  const reach = player.radius + 8 - windup * 12 + extension * 32;
+  const fistSquash = 1 + extension * 0.18;
+  const swingAngle = -0.22 + snap * 0.38 - extension * 0.16;
 
   ctx.save();
-  ctx.translate(player.radius + 2 + thrust - recoil, 0);
+  ctx.rotate(swingAngle);
 
   if (punching) {
-    ctx.strokeStyle = "rgba(246, 242, 233, 0.42)";
-    ctx.lineWidth = 5;
+    ctx.strokeStyle = "rgba(88, 166, 255, 0.28)";
+    ctx.lineWidth = 8;
     ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.moveTo(-18, 0);
-    ctx.lineTo(12, 0);
+    ctx.moveTo(player.radius - 10, 0);
+    ctx.lineTo(reach + 10, 0);
     ctx.stroke();
   }
 
-  ctx.fillStyle = "#f0b78f";
-  ctx.strokeStyle = "#7a4e3a";
-  ctx.lineWidth = 3;
+  ctx.fillStyle = "#58a6ff";
+  ctx.strokeStyle = "#1b496f";
+  ctx.lineWidth = 4;
   ctx.beginPath();
-  ctx.arc(11, 0, 9, 0, Math.PI * 2);
+  ctx.roundRect(player.radius - 5, -6, Math.max(12, reach - player.radius + 8), 12, 6);
   ctx.fill();
   ctx.stroke();
 
-  ctx.fillStyle = "#d8956f";
+  ctx.save();
+  ctx.translate(reach + 10, 0);
+  ctx.scale(fistSquash, 1 / fistSquash);
+  ctx.fillStyle = "#58a6ff";
+  ctx.strokeStyle = "#153d5f";
+  ctx.lineWidth = 4;
   ctx.beginPath();
-  ctx.arc(5, -5, 4, 0, Math.PI * 2);
-  ctx.arc(6, 0, 4, 0, Math.PI * 2);
-  ctx.arc(5, 5, 4, 0, Math.PI * 2);
+  ctx.roundRect(-8, -12, 20, 24, 8);
   ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = "#8fd0ff";
+  ctx.beginPath();
+  ctx.roundRect(-4, -8, 5, 5, 2);
+  ctx.roundRect(-4, -2, 5, 5, 2);
+  ctx.roundRect(-4, 4, 5, 5, 2);
+  ctx.fill();
+
+  ctx.strokeStyle = "rgba(246, 242, 233, 0.55)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(5, -7);
+  ctx.lineTo(8, -2);
+  ctx.lineTo(5, 5);
+  ctx.stroke();
+  ctx.restore();
+
   ctx.restore();
 }
 
