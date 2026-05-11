@@ -220,6 +220,7 @@ function updateBullets(delta) {
 
       if (bullet.weapon === "knife") {
         const hitPoint = getBoxHitPoint(bullet, crate);
+        damageCrate(crate, bullet.damage);
         const dropId = bullet.pickup?.dropId || bullet.id;
         if (!handledDropIds.has(dropId)) {
           handledDropIds.add(dropId);

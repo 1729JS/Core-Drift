@@ -807,6 +807,7 @@ function fireBullet() {
     damage: weapon.damage,
     weapon: isGlock ? "glock" : "awm",
     hitIds: [],
+    hitCrateIds: [],
   };
 
   bullets.push(bullet);
@@ -891,6 +892,7 @@ function throwKnife() {
     weapon: "knife",
     pickup: { type: "knife", count: 1, dropId: null },
     hitIds: [],
+    hitCrateIds: [],
   };
 
   bullet.pickup.dropId = bullet.id;
@@ -1030,14 +1032,25 @@ function update(delta) {
 
     for (let crateIndex = crates.length - 1; crateIndex >= 0; crateIndex -= 1) {
       const crate = crates[crateIndex];
+      const crateKey = crate.id ?? `local-${crateIndex}`;
+
+      if (bullet.hitCrateIds?.includes(crateKey)) {
+        continue;
+      }
 
       if (circleHitsBox(bullet, crate)) {
         const hitPoint = getBoxHitPoint(bullet, crate);
         const absorbed = bullet.weapon === "knife" ? bullet.damage : Math.min(bullet.damage, crate.hp);
         hitCrate = true;
+        bullet.hitCrateIds.push(crateKey);
 
         if (!sharedWorldActive) {
           damageCrate(crateIndex, absorbed);
+        } else {
+          crate.hp -= absorbed;
+          if (crate.hp <= 0) {
+            crates.splice(crateIndex, 1);
+          }
         }
 
         if (bullet.weapon === "knife") {
@@ -1107,9 +1120,18 @@ function update(delta) {
     let bulletSpent = false;
 
     for (const crate of crates) {
+      const crateKey = crate.id ?? `remote-${crates.indexOf(crate)}`;
+
+      if (bullet.hitCrateIds?.includes(crateKey)) {
+        continue;
+      }
+
       if (!circleHitsBox(bullet, crate)) {
         continue;
       }
+
+      bullet.hitCrateIds = bullet.hitCrateIds || [];
+      bullet.hitCrateIds.push(crateKey);
 
       if (bullet.weapon === "knife") {
         bulletSpent = true;
