@@ -6,7 +6,9 @@ const crypto = require("crypto");
 const root = __dirname;
 const port = Number(process.env.PORT || 3000);
 const clients = new Map();
-const world = { width: 3600, height: 3600 };
+const world = { width: 4400, height: 4400 };
+const maxCrates = 20;
+const crateRespawnMs = 5000;
 const crates = [];
 const pickups = [];
 const bullets = [];
@@ -124,7 +126,7 @@ function createCrates() {
   crates.length = 0;
   pickups.length = 0;
 
-  while (crates.length < 10) {
+  while (crates.length < maxCrates) {
     spawnCrate();
   }
 }
@@ -659,11 +661,11 @@ server.listen(port, "0.0.0.0", () => {
 });
 
 setInterval(() => {
-  if (crates.length < 10) {
+  if (crates.length < maxCrates) {
     spawnCrate();
     broadcastWorld();
   }
-}, 10000);
+}, crateRespawnMs);
 
 setInterval(() => {
   const now = Date.now();

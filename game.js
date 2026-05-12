@@ -22,9 +22,13 @@ const slot3Empty = document.querySelector("#slot3Empty");
 const slot3Name = document.querySelector("#slot3Name");
 
 const world = {
-  width: 3600,
-  height: 3600,
+  width: 4400,
+  height: 4400,
 };
+
+const maxCrates = 20;
+const crateRespawnSeconds = 5;
+const corpseLifetime = 500;
 
 const baseStats = {
   maxSpeed: 480,
@@ -153,10 +157,12 @@ const mouse = {
 let width = 0;
 let height = 0;
 let lastTime = performance.now();
-let crateRegenTimer = 10;
+let crateRegenTimer = crateRespawnSeconds;
 let audioContext = null;
 let draggedSlot = null;
 let gameStarted = false;
+let deathPending = false;
+let localDeathTimeout = null;
 let socket = null;
 let localClientId = null;
 let lastNetworkSend = 0;
@@ -165,6 +171,7 @@ let nextLocalBulletId = 1;
 
 const remotePlayers = new Map();
 const remoteBullets = [];
+const corpses = [];
 
 function spawnCrate() {
   for (let attempt = 0; attempt < 80; attempt += 1) {
@@ -194,12 +201,17 @@ function spawnCrate() {
 function createCrates() {
   crates.length = 0;
 
-  while (crates.length < 10) {
+  while (crates.length < maxCrates) {
     spawnCrate();
   }
 }
 
 function resetGameState() {
+  if (localDeathTimeout) {
+    clearTimeout(localDeathTimeout);
+    localDeathTimeout = null;
+  }
+  deathPending = false;
   player.x = world.width / 2;
   player.y = world.height / 2;
   player.vx = 0;
@@ -252,7 +264,7 @@ function resetGameState() {
   weapons.awm.magAmmo = 0;
   weapons.awm.reloadTimer = 0;
 
-  crateRegenTimer = 10;
+  crateRegenTimer = crateRespawnSeconds;
   if (!sharedWorldActive) {
     createCrates();
   }
@@ -517,11 +529,41 @@ function applyDamage(amount, sourceId = null, knockback = null) {
   playPlayerHitSound();
 
   if (player.health <= 0) {
-    dropAllLoot(player.x, player.y);
-    sendNetwork("dead", {});
+    handleLocalDeath();
+  }
+}
+
+function addCorpse({ x, y, name, color = "#58a6ff", stroke = "#1b496f" }) {
+  corpses.push({
+    x,
+    y,
+    name,
+    color,
+    stroke,
+    expiresAt: performance.now() + corpseLifetime,
+  });
+}
+
+function handleLocalDeath() {
+  if (deathPending) {
+    return;
+  }
+
+  deathPending = true;
+  mouse.down = false;
+  mouse.rightDown = false;
+  keys.clear();
+  player.knifeCharging = false;
+  player.knifeCharge = 0;
+  addCorpse({ x: player.x, y: player.y, name: player.name });
+  dropAllLoot(player.x, player.y);
+  sendNetwork("dead", {});
+
+  localDeathTimeout = setTimeout(() => {
+    localDeathTimeout = null;
     showStartScreen();
     resetGameState();
-  }
+  }, corpseLifetime);
 }
 
 function getPickupType(item) {
@@ -858,10 +900,21 @@ function connectMultiplayer() {
       }
 
       if (player.health <= 0) {
-        showStartScreen();
-        resetGameState();
+        handleLocalDeath();
       }
-    } else if (message.type === "leave" || message.type === "dead") {
+    } else if (message.type === "dead") {
+      const remote = remotePlayers.get(message.id);
+      if (remote) {
+        addCorpse({
+          x: remote.renderX ?? remote.x,
+          y: remote.renderY ?? remote.y,
+          name: remote.name,
+          color: "#ef6f8f",
+          stroke: "#7a2738",
+        });
+      }
+      remotePlayers.delete(message.id);
+    } else if (message.type === "leave") {
       remotePlayers.delete(message.id);
     }
   });
@@ -1201,6 +1254,12 @@ function dash() {
 }
 
 function update(delta) {
+  if (deathPending) {
+    camera.x += (player.x - camera.x) * camera.smoothing;
+    camera.y += (player.y - camera.y) * camera.smoothing;
+    return;
+  }
+
   const axis = getMoveAxis();
 
   const speed = Math.hypot(player.vx, player.vy);
@@ -1457,11 +1516,11 @@ function update(delta) {
   crateRegenTimer -= delta;
 
   if (!sharedWorldActive && crateRegenTimer <= 0) {
-    if (crates.length < 10) {
+    if (crates.length < maxCrates) {
       spawnCrate();
     }
 
-    crateRegenTimer = 10;
+    crateRegenTimer = crateRespawnSeconds;
   }
 
   camera.x += (player.x - camera.x) * camera.smoothing;
@@ -1932,6 +1991,43 @@ function drawRemoteBullets() {
   }
 }
 
+function drawCorpses(time) {
+  const now = performance.now();
+
+  for (let index = corpses.length - 1; index >= 0; index -= 1) {
+    const corpse = corpses[index];
+    const remaining = corpse.expiresAt - now;
+
+    if (remaining <= 0) {
+      corpses.splice(index, 1);
+      continue;
+    }
+
+    const fade = clamp(remaining / corpseLifetime, 0, 1);
+    const x = worldToScreenX(corpse.x);
+    const y = worldToScreenY(corpse.y);
+
+    ctx.save();
+    ctx.globalAlpha = 0.25 + fade * 0.75;
+    ctx.translate(x, y);
+    ctx.rotate(Math.sin(time * 0.002 + corpse.x) * 0.18);
+    ctx.fillStyle = "rgba(0, 0, 0, 0.24)";
+    ctx.beginPath();
+    ctx.ellipse(0, player.radius + 8, player.radius * 0.96, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.scale(1.18, 0.72);
+    ctx.fillStyle = corpse.color;
+    ctx.strokeStyle = corpse.stroke;
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(0, 0, player.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
 function drawRemotePlayers(time) {
   for (const remote of remotePlayers.values()) {
     remote.renderX += (remote.x - remote.renderX) * 0.22;
@@ -2328,8 +2424,11 @@ function draw(time) {
   drawPickups(time);
   drawBullets();
   drawRemoteBullets();
+  drawCorpses(time);
   drawRemotePlayers(time);
-  drawPlayer(time);
+  if (!deathPending) {
+    drawPlayer(time);
+  }
   drawVignette();
   drawMinimap();
 }
