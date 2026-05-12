@@ -44,6 +44,35 @@
         </div>
       </div>
       <div class="dash-status ready" id="dashStatus">Dash ready</div>
+      <div class="xp-status">
+        <div class="xp-label" id="xpStatus">Lv 1 | XP 0 / 100</div>
+        <div class="xp-bar" aria-hidden="true">
+          <div class="xp-bar-fill" id="xpBarFill"></div>
+        </div>
+      </div>
+    </div>
+    <div class="upgrade-panel hidden" id="upgradePanel" aria-label="Level up upgrades">
+      <div class="upgrade-title">Level Up</div>
+      <button class="upgrade-choice" data-upgrade="speed" type="button">
+        <span>Move Speed</span>
+        <b>+35</b>
+      </button>
+      <button class="upgrade-choice" data-upgrade="dash" type="button">
+        <span>Dash Distance</span>
+        <b>+90</b>
+      </button>
+      <button class="upgrade-choice" data-upgrade="health" type="button">
+        <span>Max Health</span>
+        <b>+25</b>
+      </button>
+      <button class="upgrade-choice" data-upgrade="heal" type="button">
+        <span>Heal Power</span>
+        <b>+15</b>
+      </button>
+      <button class="upgrade-choice" data-upgrade="damage" type="button">
+        <span>Damage</span>
+        <b>+10%</b>
+      </button>
     </div>
     <div class="inventory" aria-label="Weapon slots">
       <button class="slot" data-slot="1" type="button" aria-label="Slot 1 Knife">

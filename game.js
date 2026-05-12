@@ -7,6 +7,10 @@ const coords = document.querySelector("#coords");
 const dashStatus = document.querySelector("#dashStatus");
 const healthStatus = document.querySelector("#healthStatus");
 const healthBarFill = document.querySelector("#healthBarFill");
+const xpStatus = document.querySelector("#xpStatus");
+const xpBarFill = document.querySelector("#xpBarFill");
+const upgradePanel = document.querySelector("#upgradePanel");
+const upgradeButtons = document.querySelectorAll(".upgrade-choice");
 const ammoStatus = document.querySelector("#ammoStatus");
 const awmAmmoStatus = document.querySelector("#awmAmmoStatus");
 const inventorySlots = document.querySelectorAll(".slot");
@@ -20,6 +24,24 @@ const slot3Name = document.querySelector("#slot3Name");
 const world = {
   width: 3600,
   height: 3600,
+};
+
+const baseStats = {
+  maxSpeed: 480,
+  acceleration: 1620,
+  dashSpeed: 980,
+  maxHealth: 200,
+  healAmount: 60,
+  damageMultiplier: 1,
+};
+
+const xpDropValue = 38;
+const upgradeSteps = {
+  speed: { maxSpeed: 35, acceleration: 90 },
+  dash: { dashSpeed: 90 },
+  health: { maxHealth: 25 },
+  heal: { healAmount: 15 },
+  damage: { damageMultiplier: 0.1 },
 };
 
 const player = {
@@ -40,6 +62,19 @@ const player = {
   maxHealth: 200,
   shield: 0,
   maxShield: 125,
+  healAmount: baseStats.healAmount,
+  level: 1,
+  xp: 0,
+  xpToNext: 100,
+  upgradePoints: 0,
+  damageMultiplier: baseStats.damageMultiplier,
+  upgrades: {
+    speed: 0,
+    dash: 0,
+    health: 0,
+    heal: 0,
+    damage: 0,
+  },
   hurtTimer: 0,
   vx: 0,
   vy: 0,
@@ -87,7 +122,7 @@ const weapons = {
   },
   awm: {
     damage: 100,
-    bulletSpeed: 1320,
+    bulletSpeed: 1500,
     fireRate: 0.85,
     bulletRadius: 5,
     bulletLife: 4,
@@ -169,8 +204,25 @@ function resetGameState() {
   player.y = world.height / 2;
   player.vx = 0;
   player.vy = 0;
+  player.maxSpeed = baseStats.maxSpeed;
+  player.acceleration = baseStats.acceleration;
+  player.dashSpeed = baseStats.dashSpeed;
+  player.maxHealth = baseStats.maxHealth;
   player.health = player.maxHealth;
   player.shield = 0;
+  player.healAmount = baseStats.healAmount;
+  player.level = 1;
+  player.xp = 0;
+  player.xpToNext = 100;
+  player.upgradePoints = 0;
+  player.damageMultiplier = baseStats.damageMultiplier;
+  player.upgrades = {
+    speed: 0,
+    dash: 0,
+    health: 0,
+    heal: 0,
+    damage: 0,
+  };
   player.hurtTimer = 0;
   player.shotTimer = 0;
   player.swingTimer = 0;
@@ -205,12 +257,15 @@ function resetGameState() {
     createCrates();
   }
   updateInventory();
+  updateXpHud();
+  updateUpgradePanel();
 }
 
 function showStartScreen() {
   gameStarted = false;
   document.body.classList.add("game-pending");
   startScreen.classList.remove("hidden");
+  updateUpgradePanel();
 }
 
 function resize() {
@@ -238,6 +293,49 @@ function circleHitsBox(circle, box) {
   const closestX = clamp(circle.x, box.x - half, box.x + half);
   const closestY = clamp(circle.y, box.y - half, box.y + half);
   return Math.hypot(circle.x - closestX, circle.y - closestY) <= circle.radius;
+}
+
+function segmentHitsCircle(x1, y1, x2, y2, cx, cy, radius) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lengthSq = dx * dx + dy * dy;
+
+  if (lengthSq <= 0) {
+    return Math.hypot(x1 - cx, y1 - cy) <= radius;
+  }
+
+  const t = clamp(((cx - x1) * dx + (cy - y1) * dy) / lengthSq, 0, 1);
+  const closestX = x1 + dx * t;
+  const closestY = y1 + dy * t;
+  return Math.hypot(closestX - cx, closestY - cy) <= radius;
+}
+
+function segmentHitsBox(x1, y1, x2, y2, box, radius = 0) {
+  const half = box.size / 2 + radius;
+  const minX = box.x - half;
+  const maxX = box.x + half;
+  const minY = box.y - half;
+  const maxY = box.y + half;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  let tMin = 0;
+  let tMax = 1;
+
+  const clip = (start, delta, min, max) => {
+    if (Math.abs(delta) < 0.00001) {
+      return start >= min && start <= max;
+    }
+
+    const t1 = (min - start) / delta;
+    const t2 = (max - start) / delta;
+    const near = Math.min(t1, t2);
+    const far = Math.max(t1, t2);
+    tMin = Math.max(tMin, near);
+    tMax = Math.min(tMax, far);
+    return tMin <= tMax;
+  };
+
+  return clip(x1, dx, minX, maxX) && clip(y1, dy, minY, maxY);
 }
 
 function getBoxHitPoint(circle, box) {
@@ -269,6 +367,83 @@ function applyBulletKnockback(damage, vx, vy) {
   player.vy += (vy / length) * force;
 }
 
+function getScaledDamage(baseDamage) {
+  return Math.max(1, Math.round(baseDamage * player.damageMultiplier));
+}
+
+function getDeathXpDrop() {
+  return Math.max(25, Math.round(player.level * 28 + player.xp * 0.35));
+}
+
+function gainXp(amount) {
+  player.xp += Math.max(0, Math.round(amount));
+
+  while (player.xp >= player.xpToNext) {
+    player.xp -= player.xpToNext;
+    player.level += 1;
+    player.upgradePoints += 1;
+    player.xpToNext = Math.round(100 + (player.level - 1) * 55);
+  }
+
+  updateXpHud();
+  updateUpgradePanel();
+}
+
+function applyUpgrade(type) {
+  if (player.upgradePoints <= 0 || !upgradeSteps[type]) {
+    return;
+  }
+
+  const step = upgradeSteps[type];
+  player.upgradePoints -= 1;
+  player.upgrades[type] += 1;
+
+  if (step.maxSpeed) {
+    player.maxSpeed += step.maxSpeed;
+  }
+
+  if (step.acceleration) {
+    player.acceleration += step.acceleration;
+  }
+
+  if (step.dashSpeed) {
+    player.dashSpeed += step.dashSpeed;
+  }
+
+  if (step.maxHealth) {
+    player.maxHealth += step.maxHealth;
+    player.health = Math.min(player.maxHealth, player.health + step.maxHealth);
+  }
+
+  if (step.healAmount) {
+    player.healAmount += step.healAmount;
+  }
+
+  if (step.damageMultiplier) {
+    player.damageMultiplier = Number((player.damageMultiplier + step.damageMultiplier).toFixed(2));
+  }
+
+  updateXpHud();
+  updateUpgradePanel();
+}
+
+function updateXpHud() {
+  if (!xpStatus || !xpBarFill) {
+    return;
+  }
+
+  xpStatus.textContent = `Lv ${player.level} | XP ${Math.floor(player.xp)} / ${player.xpToNext}`;
+  xpBarFill.style.width = `${clamp(player.xp / player.xpToNext, 0, 1) * 100}%`;
+}
+
+function updateUpgradePanel() {
+  if (!upgradePanel) {
+    return;
+  }
+
+  upgradePanel.classList.toggle("hidden", !gameStarted || player.upgradePoints <= 0);
+}
+
 function damageCrate(index, damage) {
   const crate = crates[index];
   const destroyed = crate && crate.hp - damage <= 0;
@@ -288,6 +463,7 @@ function damageCrate(index, damage) {
 
   if (crate.hp <= 0) {
     spawnPickup(crate.x, crate.y);
+    spawnPickup(crate.x + 26, crate.y - 18, "xp", { value: xpDropValue });
     crates.splice(index, 1);
     playCrateBreakSound();
     return true;
@@ -310,6 +486,7 @@ function spawnPickup(x, y, forcedType = null, data = {}) {
     count: data.count,
     ammo: data.ammo,
     magAmmo: data.magAmmo,
+    value: data.value,
     radius: 18,
     bob: Math.random() * Math.PI * 2,
   });
@@ -340,6 +517,7 @@ function applyDamage(amount, sourceId = null, knockback = null) {
   playPlayerHitSound();
 
   if (player.health <= 0) {
+    dropAllLoot(player.x, player.y);
     sendNetwork("dead", {});
     showStartScreen();
     resetGameState();
@@ -377,6 +555,10 @@ function canCollectPickup(item) {
 
   if (type === "medkit") {
     return player.health < player.maxHealth;
+  }
+
+  if (type === "xp") {
+    return true;
   }
 
   if (type === "knife" || type === "glock" || type === "awm") {
@@ -463,7 +645,10 @@ function collectPickup(index) {
     player.shield = Math.min(player.maxShield, player.shield + 25);
     collected = true;
   } else if (pickup.type === "medkit") {
-    player.health = Math.min(player.maxHealth, player.health + 60);
+    player.health = Math.min(player.maxHealth, player.health + player.healAmount);
+    collected = true;
+  } else if (pickup.type === "xp") {
+    gainXp(pickup.value || xpDropValue);
     collected = true;
   }
 
@@ -488,7 +673,10 @@ function applyPickupItem(item) {
     player.shield = Math.min(player.maxShield, player.shield + 25);
     collected = true;
   } else if (type === "medkit") {
-    player.health = Math.min(player.maxHealth, player.health + 60);
+    player.health = Math.min(player.maxHealth, player.health + player.healAmount);
+    collected = true;
+  } else if (type === "xp") {
+    gainXp(item.value || xpDropValue);
     collected = true;
   }
 
@@ -658,6 +846,9 @@ function connectMultiplayer() {
       playEffect(message.effect);
     } else if (message.type === "pickupGranted") {
       applyPickupItem(message.item);
+    } else if (message.type === "xpGranted") {
+      gainXp(message.value || xpDropValue);
+      playPickupSound("xp");
     } else if (message.type === "health") {
       player.health = message.health;
       player.shield = message.shield;
@@ -725,6 +916,19 @@ function getPlayerSnapshot() {
     maxHealth: player.maxHealth,
     shield: player.shield,
     maxShield: player.maxShield,
+    healAmount: player.healAmount,
+    level: player.level,
+    xp: player.xp,
+    xpToNext: player.xpToNext,
+    upgradePoints: player.upgradePoints,
+    damageMultiplier: player.damageMultiplier,
+    upgrades: player.upgrades,
+    inventory: {
+      slots: { ...weapons.slots },
+      knife: { count: weapons.knife.count },
+      glock: { ammo: weapons.glock.ammo, magAmmo: weapons.glock.magAmmo },
+      awm: { ammo: weapons.awm.ammo, magAmmo: weapons.awm.magAmmo },
+    },
     selectedWeapon: weapons.slots[weapons.selectedSlot],
     aimAngle: getAimAngle(),
     swingTimer: player.swingTimer,
@@ -820,7 +1024,7 @@ function fireBullet() {
     vy: Math.sin(angle) * weapon.bulletSpeed + player.vy * 0.18,
     radius: weapon.bulletRadius,
     life: weapon.bulletLife,
-    damage: weapon.damage,
+    damage: getScaledDamage(weapon.damage),
     weapon: isGlock ? "glock" : "awm",
     hitIds: [],
     hitCrateIds: [],
@@ -855,7 +1059,7 @@ function swingKnife() {
       angle,
       range: knife.range,
       arc: knife.arc,
-      damage: knife.damage,
+      damage: getScaledDamage(knife.damage),
       swingDuration: knife.swingDuration,
     },
   });
@@ -872,7 +1076,7 @@ function swingKnife() {
     const angleDiff = Math.atan2(Math.sin(targetAngle - angle), Math.cos(targetAngle - angle));
 
     if (Math.abs(angleDiff) <= knife.arc / 2) {
-      damageCrate(index, knife.damage);
+      damageCrate(index, getScaledDamage(knife.damage));
       hitSomething = true;
     }
   }
@@ -896,7 +1100,7 @@ function punch() {
       angle,
       range: fist.range,
       arc: fist.arc,
-      damage: fist.damage,
+      damage: getScaledDamage(fist.damage),
       swingDuration: fist.swingDuration,
       weapon: "fist",
     },
@@ -914,7 +1118,7 @@ function punch() {
     const angleDiff = Math.atan2(Math.sin(targetAngle - angle), Math.cos(targetAngle - angle));
 
     if (Math.abs(angleDiff) <= fist.arc / 2) {
-      damageCrate(index, fist.damage);
+      damageCrate(index, getScaledDamage(fist.damage));
     }
   }
 
@@ -933,8 +1137,8 @@ function throwKnife() {
 
   const chargeRatio = clamp(player.knifeCharge / player.knifeChargeMax, 0, 1);
   const angle = getAimAngle();
-  const speed = 430 + chargeRatio * 760;
-  const damage = Math.round(weapons.knife.damage + (200 - weapons.knife.damage) * chargeRatio);
+  const speed = 360 + chargeRatio * 620;
+  const damage = getScaledDamage(Math.round(weapons.knife.damage + (200 - weapons.knife.damage) * chargeRatio));
 
   const bullet = {
     id: `${localClientId || "local"}-${nextLocalBulletId++}`,
@@ -1082,6 +1286,8 @@ function update(delta) {
 
   for (let index = bullets.length - 1; index >= 0; index -= 1) {
     const bullet = bullets[index];
+    const previousX = bullet.x;
+    const previousY = bullet.y;
     bullet.x += bullet.vx * delta;
     bullet.y += bullet.vy * delta;
     bullet.life -= delta;
@@ -1098,7 +1304,7 @@ function update(delta) {
         continue;
       }
 
-      if (circleHitsBox(bullet, crate)) {
+      if (circleHitsBox(bullet, crate) || segmentHitsBox(previousX, previousY, bullet.x, bullet.y, crate, bullet.radius)) {
         const hitPoint = getBoxHitPoint(bullet, crate);
         const absorbed = bullet.weapon === "knife" ? bullet.damage : Math.min(bullet.damage, crate.hp);
         hitCrate = true;
@@ -1137,7 +1343,7 @@ function update(delta) {
         const remoteX = remote.renderX ?? remote.x;
         const remoteY = remote.renderY ?? remote.y;
 
-        if (Math.hypot(bullet.x - remoteX, bullet.y - remoteY) > bullet.radius + player.radius) {
+        if (!segmentHitsCircle(previousX, previousY, bullet.x, bullet.y, remoteX, remoteY, bullet.radius + player.radius)) {
           continue;
         }
 
@@ -1173,6 +1379,8 @@ function update(delta) {
 
   for (let index = remoteBullets.length - 1; index >= 0; index -= 1) {
     const bullet = remoteBullets[index];
+    const previousX = bullet.x;
+    const previousY = bullet.y;
     bullet.x += bullet.vx * delta;
     bullet.y += bullet.vy * delta;
     bullet.life -= delta;
@@ -1186,7 +1394,7 @@ function update(delta) {
         continue;
       }
 
-      if (!circleHitsBox(bullet, crate)) {
+      if (!circleHitsBox(bullet, crate) && !segmentHitsBox(previousX, previousY, bullet.x, bullet.y, crate, bullet.radius)) {
         continue;
       }
 
@@ -1208,7 +1416,8 @@ function update(delta) {
       break;
     }
 
-    const hitPlayer = !bulletSpent && !bullet.hitLocal && Math.hypot(bullet.x - player.x, bullet.y - player.y) <= bullet.radius + player.radius;
+    const hitPlayer =
+      !bulletSpent && !bullet.hitLocal && segmentHitsCircle(previousX, previousY, bullet.x, bullet.y, player.x, player.y, bullet.radius + player.radius);
     const expired = bullet.life <= 0 || bullet.x < -80 || bullet.x > world.width + 80 || bullet.y < -80 || bullet.y > world.height + 80;
 
     if (hitPlayer) {
@@ -1268,6 +1477,8 @@ function update(delta) {
   coords.textContent = `${Math.round(player.x)}, ${Math.round(player.y)}`;
   healthStatus.textContent = `HP ${Math.ceil(player.health)} / ${player.maxHealth} | SH ${Math.ceil(player.shield)}`;
   healthBarFill.style.width = `${clamp(player.health / player.maxHealth, 0, 1) * 100}%`;
+  updateXpHud();
+  updateUpgradePanel();
   updateInventory();
 
   if (player.dashTimer > 0) {
@@ -1413,6 +1624,39 @@ function dropSelectedWeapon() {
   const nextSlot = [1, 2, 3].find((slot) => weapons.slots[slot]);
   weapons.selectedSlot = nextSlot || weapons.selectedSlot;
   updateInventory();
+  updateXpHud();
+  updateUpgradePanel();
+}
+
+function dropAllLoot(x, y) {
+  const angles = [0, Math.PI * 0.66, Math.PI * 1.33, Math.PI, Math.PI * 1.66];
+  let dropIndex = 0;
+
+  for (const slot of [1, 2, 3]) {
+    const weaponName = weapons.slots[slot];
+
+    if (!weaponName) {
+      continue;
+    }
+
+    const angle = angles[dropIndex % angles.length];
+    const dropX = x + Math.cos(angle) * (44 + dropIndex * 8);
+    const dropY = y + Math.sin(angle) * (44 + dropIndex * 8);
+
+    if (weaponName === "knife") {
+      dropPickupAt(dropX, dropY, { type: "knife", count: Math.max(1, weapons.knife.count) });
+    } else {
+      dropPickupAt(dropX, dropY, {
+        type: weaponName,
+        ammo: weapons[weaponName].ammo,
+        magAmmo: weapons[weaponName].magAmmo,
+      });
+    }
+
+    dropIndex += 1;
+  }
+
+  dropPickupAt(x + 18, y - 42, { type: "xp", value: getDeathXpDrop() });
 }
 
 function worldToScreenX(x) {
@@ -1600,6 +1844,20 @@ function drawPickups(time) {
       ctx.fillStyle = "#ef6f8f";
       ctx.fillRect(-4, -10, 8, 20);
       ctx.fillRect(-10, -4, 20, 8);
+    } else if (pickup.type === "xp") {
+      const pulse = 1 + Math.sin(time * 0.01 + pickup.bob) * 0.08;
+      ctx.scale(pulse, pulse);
+      ctx.fillStyle = "#ffcf5f";
+      ctx.strokeStyle = "#8df4df";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "rgba(255, 255, 255, 0.72)";
+      ctx.beginPath();
+      ctx.arc(-3, -4, 3, 0, Math.PI * 2);
+      ctx.fill();
     }
 
     ctx.restore();
@@ -1824,7 +2082,6 @@ function drawFistWeapon(punchTimer, punchDuration, colors = {}) {
     stroke: colors.stroke || "#1b496f",
     darkStroke: colors.darkStroke || "#153d5f",
     highlight: colors.highlight || "#8fd0ff",
-    trail: colors.trail || "rgba(88, 166, 255, 0.28)",
   };
   const punching = punchTimer > 0;
   const progress = punching ? clamp(1 - punchTimer / punchDuration, 0, 1) : 0;
@@ -1837,16 +2094,6 @@ function drawFistWeapon(punchTimer, punchDuration, colors = {}) {
 
   ctx.save();
   ctx.rotate(swingAngle);
-
-  if (punching) {
-    ctx.strokeStyle = palette.trail;
-    ctx.lineWidth = 5;
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(player.radius + 2, 0);
-    ctx.lineTo(reach + 7, 0);
-    ctx.stroke();
-  }
 
   ctx.save();
   ctx.translate(reach + 6, 0);
@@ -2248,8 +2495,16 @@ for (const slot of inventorySlots) {
   });
 }
 
+for (const button of upgradeButtons) {
+  button.addEventListener("click", () => {
+    applyUpgrade(button.dataset.upgrade);
+  });
+}
+
 resize();
 document.body.classList.add("game-pending");
 createCrates();
 updateInventory();
+updateXpHud();
+updateUpgradePanel();
 requestAnimationFrame(tick);

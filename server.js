@@ -31,6 +31,49 @@ function circleHitsBox(circle, box) {
   return Math.hypot(circle.x - closestX, circle.y - closestY) <= circle.radius;
 }
 
+function segmentHitsCircle(x1, y1, x2, y2, cx, cy, radius) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lengthSq = dx * dx + dy * dy;
+
+  if (lengthSq <= 0) {
+    return Math.hypot(x1 - cx, y1 - cy) <= radius;
+  }
+
+  const t = clamp(((cx - x1) * dx + (cy - y1) * dy) / lengthSq, 0, 1);
+  const closestX = x1 + dx * t;
+  const closestY = y1 + dy * t;
+  return Math.hypot(closestX - cx, closestY - cy) <= radius;
+}
+
+function segmentHitsBox(x1, y1, x2, y2, box, radius = 0) {
+  const half = box.size / 2 + radius;
+  const minX = box.x - half;
+  const maxX = box.x + half;
+  const minY = box.y - half;
+  const maxY = box.y + half;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  let tMin = 0;
+  let tMax = 1;
+
+  const clip = (start, delta, min, max) => {
+    if (Math.abs(delta) < 0.00001) {
+      return start >= min && start <= max;
+    }
+
+    const t1 = (min - start) / delta;
+    const t2 = (max - start) / delta;
+    const near = Math.min(t1, t2);
+    const far = Math.max(t1, t2);
+    tMin = Math.max(tMin, near);
+    tMax = Math.min(tMax, far);
+    return tMin <= tMax;
+  };
+
+  return clip(x1, dx, minX, maxX) && clip(y1, dy, minY, maxY);
+}
+
 function getBoxHitPoint(circle, box) {
   const half = box.size / 2;
 
@@ -71,6 +114,7 @@ function spawnPickup(x, y, forcedType = null, data = {}) {
     count: data.count,
     ammo: data.ammo,
     magAmmo: data.magAmmo,
+    value: data.value,
     radius: 18,
     bob: Math.random() * Math.PI * 2,
   });
@@ -131,6 +175,43 @@ function applyDamageToState(state, amount) {
   return next;
 }
 
+function dropPlayerLoot(state) {
+  if (!state) return;
+
+  const inventory = state.inventory || {};
+  const slots = inventory.slots || {};
+  const droppedTypes = new Set();
+  let dropIndex = 0;
+  const angles = [0, Math.PI * 0.66, Math.PI * 1.33, Math.PI, Math.PI * 1.66];
+
+  for (const slot of ["1", "2", "3"]) {
+    const weaponName = slots[slot];
+
+    if (!weaponName || droppedTypes.has(weaponName)) {
+      continue;
+    }
+
+    droppedTypes.add(weaponName);
+    const angle = angles[dropIndex % angles.length];
+    const x = clamp(state.x + Math.cos(angle) * (44 + dropIndex * 8), 24, world.width - 24);
+    const y = clamp(state.y + Math.sin(angle) * (44 + dropIndex * 8), 24, world.height - 24);
+
+    if (weaponName === "knife") {
+      spawnPickup(x, y, "knife", { count: Math.max(1, Number(inventory.knife?.count || 1)) });
+    } else if (weaponName === "glock" || weaponName === "awm") {
+      spawnPickup(x, y, weaponName, {
+        ammo: Math.max(0, Number(inventory[weaponName]?.ammo || 0)),
+        magAmmo: Math.max(0, Number(inventory[weaponName]?.magAmmo || 0)),
+      });
+    }
+
+    dropIndex += 1;
+  }
+
+  const xpValue = Math.max(25, Math.round((state.level || 1) * 28 + (state.xp || 0) * 0.35));
+  spawnPickup(clamp(state.x + 18, 24, world.width - 24), clamp(state.y - 42, 24, world.height - 24), "xp", { value: xpValue });
+}
+
 function damageClient(targetId, amount, sourceId = null, knockback = null) {
   const client = clients.get(targetId);
 
@@ -153,7 +234,9 @@ function damageClient(targetId, amount, sourceId = null, knockback = null) {
     }
   }
 
-  if (client.state.health <= 0) {
+  if (previousHealth > 0 && client.state.health <= 0) {
+    dropPlayerLoot(client.state);
+    broadcastWorld();
     broadcast({ type: "dead", id: targetId }, targetId);
   }
 
@@ -166,6 +249,7 @@ function damageCrate(crate, amount) {
 
   if (crate.hp <= 0) {
     spawnPickup(crate.x, crate.y);
+    spawnPickup(crate.x + 26, crate.y - 18, "xp", { value: 38 });
     crates.splice(crates.indexOf(crate), 1);
   }
 
@@ -205,6 +289,8 @@ function updateBullets(delta) {
 
   for (let index = bullets.length - 1; index >= 0; index -= 1) {
     const bullet = bullets[index];
+    const previousX = bullet.x;
+    const previousY = bullet.y;
     bullet.x += bullet.vx * delta;
     bullet.y += bullet.vy * delta;
     bullet.life -= delta;
@@ -214,7 +300,7 @@ function updateBullets(delta) {
     for (let crateIndex = crates.length - 1; crateIndex >= 0; crateIndex -= 1) {
       const crate = crates[crateIndex];
 
-      if (!circleHitsBox(bullet, crate)) {
+      if (!circleHitsBox(bullet, crate) && !segmentHitsBox(previousX, previousY, bullet.x, bullet.y, crate, bullet.radius)) {
         continue;
       }
 
@@ -249,7 +335,7 @@ function updateBullets(delta) {
           continue;
         }
 
-        if (Math.hypot(bullet.x - client.state.x, bullet.y - client.state.y) > bullet.radius + 24) {
+        if (!segmentHitsCircle(previousX, previousY, bullet.x, bullet.y, client.state.x, client.state.y, bullet.radius + 24)) {
           continue;
         }
 
@@ -437,10 +523,18 @@ server.on("upgrade", (request, socket) => {
         const client = clients.get(id);
         if (client) {
           const previous = client.state || {};
+          const nextMaxHealth = message.state?.maxHealth ?? previous.maxHealth ?? 200;
+          const previousMaxHealth = previous.maxHealth ?? nextMaxHealth;
+          let nextHealth = previous.health ?? message.state?.health ?? nextMaxHealth;
+
+          if (nextMaxHealth > previousMaxHealth) {
+            nextHealth = Math.min(nextMaxHealth, nextHealth + (nextMaxHealth - previousMaxHealth));
+          }
+
           client.state = {
             ...message.state,
-            health: previous.health ?? message.state.health ?? 200,
-            maxHealth: previous.maxHealth ?? message.state.maxHealth ?? 200,
+            health: nextHealth,
+            maxHealth: nextMaxHealth,
             shield: previous.shield ?? message.state.shield ?? 0,
             maxShield: previous.maxShield ?? message.state.maxShield ?? 125,
           };
@@ -498,14 +592,7 @@ server.on("upgrade", (request, socket) => {
       } else if (message.type === "crateDamage") {
         const crate = crates.find((candidate) => candidate.id === message.id);
         if (crate) {
-          const destroyed = crate.hp - message.damage <= 0;
-          crate.hp -= message.damage;
-          if (crate.hp <= 0) {
-            spawnPickup(crate.x, crate.y);
-            crates.splice(crates.indexOf(crate), 1);
-          }
-          broadcastEffect({ type: destroyed ? "crateBreak" : "crateHit", x: crate.x, y: crate.y });
-          broadcastWorld();
+          damageCrate(crate, Math.max(0, Number(message.damage || 0)));
         }
       } else if (message.type === "pickupRequest") {
         const client = clients.get(id);
@@ -526,8 +613,13 @@ server.on("upgrade", (request, socket) => {
             client.state = { ...client.state, shield: Math.min(maxShield, (client.state.shield || 0) + 25), maxShield };
             send(socket, { type: "health", health: client.state.health, shield: client.state.shield });
           } else if (pickup.type === "medkit") {
-            client.state = { ...client.state, health: Math.min(client.state.maxHealth || 200, (client.state.health || 200) + 60) };
+            client.state = {
+              ...client.state,
+              health: Math.min(client.state.maxHealth || 200, (client.state.health || 200) + (client.state.healAmount || 60)),
+            };
             send(socket, { type: "health", health: client.state.health, shield: client.state.shield || 0 });
+          } else if (pickup.type === "xp") {
+            send(socket, { type: "xpGranted", value: pickup.value || 38 });
           } else {
             send(socket, { type: "pickupGranted", item: pickup });
           }
@@ -540,6 +632,12 @@ server.on("upgrade", (request, socket) => {
           damageClient(id, message.damage, message.sourceId);
         }
       } else if (message.type === "dead") {
+        const client = clients.get(id);
+        if (client?.state && (client.state.health || 0) > 0) {
+          client.state = { ...client.state, health: 0 };
+          dropPlayerLoot(client.state);
+          broadcastWorld();
+        }
         broadcast({ type: "dead", id }, id);
       }
     }
