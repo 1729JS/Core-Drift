@@ -59,13 +59,13 @@ const magnetRange = 150;
 const magnetSpeed = 360;
 const shopPrices = {
   knife: { buy: 50, sell: 25 },
-  glock: { buy: 250, sell: 100 },
-  awm: { buy: 700, sell: 300 },
+  glock: { buy: 170, sell: 85 },
+  awm: { buy: 360, sell: 180 },
 };
 const shopUpgradePrices = {
-  knife: { range: 120, damage: 140, mag: 90 },
-  glock: { range: 180, damage: 240, mag: 220 },
-  awm: { range: 280, damage: 360, mag: 320 },
+  knife: { range: 120, damage: 140, mag: 90, speed: 160 },
+  glock: { range: 180, damage: 240, mag: 220, speed: 260 },
+  awm: { range: 280, damage: 360, mag: 320, speed: 420 },
 };
 const shopAbilityPrices = {
   heal: 180,
@@ -155,10 +155,11 @@ const weapons = {
     fireRate: 0.42,
     range: 82,
     throwLifeBonus: 0,
+    throwSpeedBonus: 0,
     arc: Math.PI * 0.72,
     swingDuration: 0.18,
     count: 1,
-    upgrades: { range: 0, damage: 0, mag: 0 },
+    upgrades: { range: 0, damage: 0, mag: 0, speed: 0 },
   },
   fist: {
     damage: 10,
@@ -178,7 +179,7 @@ const weapons = {
     magazineSize: 17,
     reloadTime: 3,
     reloadTimer: 0,
-    upgrades: { range: 0, damage: 0, mag: 0 },
+    upgrades: { range: 0, damage: 0, mag: 0, speed: 0 },
   },
   awm: {
     damage: 100,
@@ -191,7 +192,7 @@ const weapons = {
     magazineSize: 6,
     reloadTime: 5,
     reloadTimer: 0,
-    upgrades: { range: 0, damage: 0, mag: 0 },
+    upgrades: { range: 0, damage: 0, mag: 0, speed: 0 },
   },
 };
 
@@ -337,21 +338,24 @@ function resetGameState() {
   weapons.knife.damage = 25;
   weapons.knife.range = 82;
   weapons.knife.throwLifeBonus = 0;
-  weapons.knife.upgrades = { range: 0, damage: 0, mag: 0 };
+  weapons.knife.throwSpeedBonus = 0;
+  weapons.knife.upgrades = { range: 0, damage: 0, mag: 0, speed: 0 };
   weapons.glock.damage = 50;
+  weapons.glock.bulletSpeed = 880;
   weapons.glock.bulletLife = 1.2;
   weapons.glock.magazineSize = 17;
   weapons.glock.ammo = 0;
   weapons.glock.magAmmo = 0;
   weapons.glock.reloadTimer = 0;
-  weapons.glock.upgrades = { range: 0, damage: 0, mag: 0 };
+  weapons.glock.upgrades = { range: 0, damage: 0, mag: 0, speed: 0 };
   weapons.awm.damage = 100;
+  weapons.awm.bulletSpeed = 1500;
   weapons.awm.bulletLife = 4;
   weapons.awm.magazineSize = 6;
   weapons.awm.ammo = 0;
   weapons.awm.magAmmo = 0;
   weapons.awm.reloadTimer = 0;
-  weapons.awm.upgrades = { range: 0, damage: 0, mag: 0 };
+  weapons.awm.upgrades = { range: 0, damage: 0, mag: 0, speed: 0 };
 
   crateRegenTimer = crateRespawnSeconds;
   if (!sharedWorldActive) {
@@ -565,6 +569,15 @@ function updateShopHud() {
     shopCoins.textContent = `Coins ${player.coins}`;
   }
 
+  shopPanel?.querySelectorAll("button[data-action='buy'], button[data-action='sell']").forEach((button) => {
+    const item = button.dataset.item;
+    const action = button.dataset.action;
+    const unit = getTradeUnit(item);
+    const price = shopPrices[item]?.[action] || 0;
+    const unitLabel = item === "knife" ? "1" : `${unit} ammo`;
+    button.textContent = `${action === "buy" ? "Buy" : "Sell"} ${unitLabel} | ${price}`;
+  });
+
   shopPanel?.querySelectorAll("button[data-action='upgrade']").forEach((button) => {
     const item = button.dataset.item;
     const stat = button.dataset.stat;
@@ -661,7 +674,7 @@ function openShop() {
 
   shopPanel.classList.remove("hidden");
   updateShopHud();
-  setShopMessage("사고 팔 아이템을 선택하세요.");
+  setShopMessage("Choose an item or upgrade.");
 }
 
 function closeShop() {
@@ -690,21 +703,68 @@ function getAbilityPrice(ability) {
   return Math.round(base * (1 + level * 0.7));
 }
 
+function getTradeUnit(item) {
+  if (item === "glock") {
+    return 17;
+  }
+
+  if (item === "awm") {
+    return 6;
+  }
+
+  return 1;
+}
+
+function getWeaponAmmoTotal(item) {
+  if (item !== "glock" && item !== "awm") {
+    return 0;
+  }
+
+  return weapons[item].ammo + weapons[item].magAmmo;
+}
+
+function removeAmmoForSale(item, amount) {
+  if (getWeaponAmmoTotal(item) < amount) {
+    return false;
+  }
+
+  const reserveUsed = Math.min(weapons[item].ammo, amount);
+  weapons[item].ammo -= reserveUsed;
+
+  const fromMagazine = amount - reserveUsed;
+  if (fromMagazine > 0) {
+    weapons[item].magAmmo = Math.max(0, weapons[item].magAmmo - fromMagazine);
+  }
+
+  if (getWeaponAmmoTotal(item) <= 0) {
+    const slot = [1, 2, 3].find((candidate) => weapons.slots[candidate] === item);
+    if (slot) {
+      weapons.slots[slot] = null;
+    }
+    weapons[item].ammo = 0;
+    weapons[item].magAmmo = 0;
+    weapons[item].reloadTimer = 0;
+  }
+
+  return true;
+}
+
 function buyShopItem(item) {
   const price = shopPrices[item]?.buy;
 
   if (!price || player.coins < price) {
-    setShopMessage("코인이 부족합니다.");
+    setShopMessage("Not enough coins.");
     return;
   }
 
+  const unit = getTradeUnit(item);
   const pickup =
     item === "knife"
       ? { type: "knife", count: 1 }
-      : { type: item, ammo: weapons[item].magazineSize, magAmmo: 0 };
+      : { type: item, ammo: unit, magAmmo: 0 };
 
   if (!addWeaponToInventory(pickup)) {
-    setShopMessage("아이템 창이 가득 찼습니다.");
+    setShopMessage("Inventory full.");
     return;
   }
 
@@ -712,14 +772,14 @@ function buyShopItem(item) {
   updateInventory();
   updateCoinHud();
   updateShopHud();
-  setShopMessage(`${getWeaponDisplay(item).label} 구매 완료`);
+  setShopMessage(`${getWeaponDisplay(item).label} purchased.`);
 }
 
 function buyWeaponUpgrade(item, stat) {
   const price = getUpgradePrice(item, stat);
 
   if (!weapons[item]?.upgrades || player.coins < price) {
-    setShopMessage("코인이 부족합니다.");
+    setShopMessage("Not enough coins.");
     return;
   }
 
@@ -735,6 +795,12 @@ function buyWeaponUpgrade(item, stat) {
     }
   } else if (stat === "damage") {
     weapons[item].damage += item === "awm" ? 15 : item === "glock" ? 8 : 5;
+  } else if (stat === "speed") {
+    if (item === "knife") {
+      weapons.knife.throwSpeedBonus += 45;
+    } else {
+      weapons[item].bulletSpeed += item === "awm" ? 110 : 70;
+    }
   } else if (stat === "mag") {
     if (item === "knife") {
       weapons.knife.count += 1;
@@ -748,14 +814,14 @@ function buyWeaponUpgrade(item, stat) {
   updateInventory();
   updateCoinHud();
   updateShopHud();
-  setShopMessage(`${getWeaponDisplay(item).label} ${stat} 업그레이드 완료`);
+  setShopMessage(`${getWeaponDisplay(item).label} ${stat} upgraded.`);
 }
 
 function buyAbilityUpgrade(ability) {
   const price = getAbilityPrice(ability);
 
   if (player.coins < price) {
-    setShopMessage("코인이 부족합니다.");
+    setShopMessage("Not enough coins.");
     return;
   }
 
@@ -765,7 +831,7 @@ function buyAbilityUpgrade(ability) {
     player.healAmount += 15;
     updateCoinHud();
     updateShopHud();
-    setShopMessage("Heal Power 업그레이드 완료");
+    setShopMessage("Heal Power upgraded.");
   }
 }
 
@@ -773,7 +839,7 @@ function sellShopItem(item) {
   const price = shopPrices[item]?.sell;
 
   if (!price || ![1, 2, 3].find((slot) => weapons.slots[slot] === item)) {
-    setShopMessage("판매할 아이템이 없습니다.");
+    setShopMessage("Nothing to sell.");
     return;
   }
 
@@ -785,11 +851,11 @@ function sellShopItem(item) {
       weapons.knife.count = 0;
     }
   } else {
-    const slot = [1, 2, 3].find((candidate) => weapons.slots[candidate] === item);
-    if (slot) weapons.slots[slot] = null;
-    weapons[item].ammo = 0;
-    weapons[item].magAmmo = 0;
-    weapons[item].reloadTimer = 0;
+    const unit = getTradeUnit(item);
+    if (!removeAmmoForSale(item, unit)) {
+      setShopMessage(`Need ${unit} ammo to sell.`);
+      return;
+    }
   }
 
   if (!weapons.slots[weapons.selectedSlot]) {
@@ -800,7 +866,7 @@ function sellShopItem(item) {
   updateInventory();
   updateCoinHud();
   updateShopHud();
-  setShopMessage(`${getWeaponDisplay(item).label} 판매 완료`);
+  setShopMessage(`${getWeaponDisplay(item).label} sold.`);
 }
 
 function updateUpgradePanel() {
@@ -1706,7 +1772,7 @@ function throwKnife() {
 
   const chargeRatio = clamp(player.knifeCharge / player.knifeChargeMax, 0, 1);
   const angle = getAimAngle();
-  const speed = 360 + chargeRatio * 620;
+  const speed = 360 + chargeRatio * 620 + weapons.knife.throwSpeedBonus;
   const damage = getScaledDamage(Math.round(weapons.knife.damage + (200 - weapons.knife.damage) * chargeRatio));
 
   const bullet = {

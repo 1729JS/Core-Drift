@@ -81,20 +81,41 @@
       </div>
       <div class="shop-coins" id="shopCoins">Coins 0</div>
       <div class="shop-list">
-        <div class="shop-row" data-item="knife">
-          <span>Knife</span>
+        <div class="shop-row shop-trade-row" data-item="knife">
+          <span class="shop-item-main">
+            <span class="weapon-icon knife-icon">
+              <span class="knife-blade"></span>
+              <span class="knife-handle"></span>
+            </span>
+            <span class="shop-item-copy"><b>Knife</b><small>Trade one knife at a time</small></span>
+          </span>
           <button data-action="buy" data-item="knife" type="button">Buy 50</button>
           <button data-action="sell" data-item="knife" type="button">Sell 25</button>
         </div>
-        <div class="shop-row" data-item="glock">
-          <span>Glock</span>
-          <button data-action="buy" data-item="glock" type="button">Buy 250</button>
-          <button data-action="sell" data-item="glock" type="button">Sell 100</button>
+        <div class="shop-row shop-trade-row" data-item="glock">
+          <span class="shop-item-main">
+            <span class="weapon-icon glock-icon">
+              <span class="glock-slide"></span>
+              <span class="glock-grip"></span>
+              <span class="glock-trigger"></span>
+            </span>
+            <span class="shop-item-copy"><b>Glock</b><small>Trade in 17-round bundles</small></span>
+          </span>
+          <button data-action="buy" data-item="glock" type="button">Buy 17 ammo</button>
+          <button data-action="sell" data-item="glock" type="button">Sell 17 ammo</button>
         </div>
-        <div class="shop-row" data-item="awm">
-          <span>AWM</span>
-          <button data-action="buy" data-item="awm" type="button">Buy 700</button>
-          <button data-action="sell" data-item="awm" type="button">Sell 300</button>
+        <div class="shop-row shop-trade-row" data-item="awm">
+          <span class="shop-item-main">
+            <span class="weapon-icon awm-icon">
+              <span class="awm-scope"></span>
+              <span class="awm-barrel"></span>
+              <span class="awm-body"></span>
+              <span class="awm-stock"></span>
+            </span>
+            <span class="shop-item-copy"><b>AWM</b><small>Trade in 6-round bundles</small></span>
+          </span>
+          <button data-action="buy" data-item="awm" type="button">Buy 6 ammo</button>
+          <button data-action="sell" data-item="awm" type="button">Sell 6 ammo</button>
         </div>
         <div class="shop-section">Upgrades</div>
         <div class="shop-row">
@@ -110,6 +131,10 @@
           <button data-action="upgrade" data-item="knife" data-stat="mag" type="button"></button>
         </div>
         <div class="shop-row">
+          <span>Knife Throw Speed</span>
+          <button data-action="upgrade" data-item="knife" data-stat="speed" type="button"></button>
+        </div>
+        <div class="shop-row">
           <span>Glock Range</span>
           <button data-action="upgrade" data-item="glock" data-stat="range" type="button"></button>
         </div>
@@ -122,6 +147,10 @@
           <button data-action="upgrade" data-item="glock" data-stat="mag" type="button"></button>
         </div>
         <div class="shop-row">
+          <span>Glock Bullet Speed</span>
+          <button data-action="upgrade" data-item="glock" data-stat="speed" type="button"></button>
+        </div>
+        <div class="shop-row">
           <span>AWM Range</span>
           <button data-action="upgrade" data-item="awm" data-stat="range" type="button"></button>
         </div>
@@ -132,6 +161,10 @@
         <div class="shop-row">
           <span>AWM Mag</span>
           <button data-action="upgrade" data-item="awm" data-stat="mag" type="button"></button>
+        </div>
+        <div class="shop-row">
+          <span>AWM Bullet Speed</span>
+          <button data-action="upgrade" data-item="awm" data-stat="speed" type="button"></button>
         </div>
         <div class="shop-row">
           <span>Heal Power</span>
