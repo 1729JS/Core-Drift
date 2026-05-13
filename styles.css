@@ -72,6 +72,40 @@ body {
   line-height: 1.55;
 }
 
+.account-box {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  width: min(300px, 100%);
+  margin: 0 auto 14px;
+  padding: 10px;
+  border: 1px solid rgba(246, 242, 233, 0.14);
+  border-radius: 8px;
+  background: rgba(246, 242, 233, 0.05);
+}
+
+.account-status {
+  color: rgba(246, 242, 233, 0.72);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.google-signin {
+  min-height: 40px;
+}
+
+.account-signout {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid rgba(246, 242, 233, 0.2);
+  border-radius: 7px;
+  background: rgba(246, 242, 233, 0.08);
+  color: #f6f2e9;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .nickname-field {
   display: block;
   width: min(260px, 100%);
@@ -142,6 +176,7 @@ body {
 .game-pending .inventory,
 .game-pending .skill-slot,
 .game-pending .leaderboard,
+.game-pending .chat-panel,
 .game-pending .upgrade-panel {
   display: none;
 }
@@ -332,6 +367,78 @@ body {
   justify-content: space-between;
   gap: 12px;
   padding: 3px 0;
+}
+
+.chat-panel {
+  position: fixed;
+  left: 18px;
+  bottom: 18px;
+  z-index: 4;
+  width: min(330px, calc(100vw - 36px));
+  pointer-events: auto;
+}
+
+.chat-log {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 5px;
+  min-height: 88px;
+  max-height: 150px;
+  overflow: hidden;
+  padding: 10px;
+  border: 1px solid rgba(246, 242, 233, 0.13);
+  border-radius: 8px 8px 0 0;
+  background: rgba(16, 18, 20, 0.48);
+  backdrop-filter: blur(8px);
+}
+
+.chat-line {
+  color: rgba(246, 242, 233, 0.9);
+  font-size: 12px;
+  line-height: 1.35;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+}
+
+.chat-line b {
+  color: #8df4df;
+}
+
+.chat-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  border: 1px solid rgba(246, 242, 233, 0.15);
+  border-top: 0;
+  border-radius: 0 0 8px 8px;
+  overflow: hidden;
+  background: rgba(16, 18, 20, 0.72);
+  backdrop-filter: blur(8px);
+}
+
+.chat-form input,
+.chat-form button {
+  height: 36px;
+  border: 0;
+  color: #f6f2e9;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.chat-form input {
+  min-width: 0;
+  padding: 0 10px;
+  outline: 0;
+  background: transparent;
+}
+
+.chat-form input:focus {
+  background: rgba(246, 242, 233, 0.07);
+}
+
+.chat-form button {
+  width: 64px;
+  background: rgba(141, 244, 223, 0.18);
 }
 
 .shop-panel {

@@ -13,6 +13,11 @@
         <div class="start-kicker">Survive. Loot. Drift.</div>
         <h1>Core Drift</h1>
         <p class="start-copy">칼 하나로 시작해서 상자를 부수고, 무기와 보호막을 주워 살아남으세요.</p>
+        <div class="account-box">
+          <div class="account-status" id="accountStatus">Guest profile</div>
+          <div class="google-signin" id="googleSignIn"></div>
+          <button class="account-signout hidden" id="accountSignOut" type="button">Sign out</button>
+        </div>
         <label class="nickname-field">
           <span>Nickname</span>
           <input id="nicknameInput" type="text" maxlength="14" placeholder="Player" autocomplete="off" />
@@ -74,6 +79,13 @@
       </button>
     </div>
     <div class="leaderboard" id="leaderboard" aria-label="Score leaderboard"></div>
+    <section class="chat-panel" id="chatPanel" aria-label="Chat">
+      <div class="chat-log" id="chatLog" aria-live="polite"></div>
+      <form class="chat-form" id="chatForm">
+        <input id="chatInput" type="text" maxlength="80" placeholder="Enter: chat" autocomplete="off" />
+        <button type="submit">Send</button>
+      </form>
+    </section>
     <div class="shop-panel hidden" id="shopPanel" aria-label="Shop">
       <div class="shop-header">
         <strong>Shop</strong>
@@ -271,6 +283,10 @@
       <span class="skill-icon"></span>
       <span class="skill-cooldown" id="knifeSwapCooldown"></span>
     </div>
+    <script>
+      window.CORE_DRIFT_GOOGLE_CLIENT_ID = "";
+    </script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="game.js"></script>
   </body>
 </html>

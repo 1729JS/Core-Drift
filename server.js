@@ -5,6 +5,10 @@ const crypto = require("crypto");
 
 const root = __dirname;
 const port = Number(process.env.PORT || 3000);
+const googleClientId = process.env.GOOGLE_CLIENT_ID || "";
+const sessionSecret = process.env.SESSION_SECRET || "core-drift-dev-session-secret";
+const supabaseUrl = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const clients = new Map();
 const world = { width: 8800, height: 8800 };
 const maxCrates = 40;
@@ -36,6 +40,8 @@ const mimeTypes = {
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
 };
+
+const hasDatabase = Boolean(supabaseUrl && supabaseServiceKey);
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -466,8 +472,14 @@ function updateBullets(delta) {
 
 createCrates();
 
-const server = http.createServer((request, response) => {
-  const requestedPath = request.url === "/" ? "/index.html" : request.url.split("?")[0];
+const server = http.createServer(async (request, response) => {
+  const url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
+
+  if (url.pathname.startsWith("/api/") && (await handleApi(request, response, url.pathname))) {
+    return;
+  }
+
+  const requestedPath = url.pathname === "/" ? "/index.html" : url.pathname;
   const filePath = path.normalize(path.join(root, requestedPath));
 
   if (!filePath.startsWith(root)) {
@@ -555,6 +567,226 @@ function broadcast(data, exceptId = null) {
       send(client.socket, data);
     }
   }
+}
+
+function sanitizeChatText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
+function base64UrlEncode(value) {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
+}
+
+function signSession(account) {
+  const payload = {
+    sub: account.id,
+    name: account.name || "Player",
+    email: account.email || "",
+    exp: Date.now() + 1000 * 60 * 60 * 24 * 30,
+  };
+  const encoded = base64UrlEncode(payload);
+  const signature = crypto.createHmac("sha256", sessionSecret).update(encoded).digest("base64url");
+  return `${encoded}.${signature}`;
+}
+
+function verifySessionToken(token) {
+  if (!token || !token.includes(".")) {
+    return null;
+  }
+
+  const [encoded, signature] = token.split(".");
+  if (!encoded || !signature) {
+    return null;
+  }
+  const expected = crypto.createHmac("sha256", sessionSecret).update(encoded).digest("base64url");
+
+  if (signature.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+    if (!payload.sub || payload.exp < Date.now()) {
+      return null;
+    }
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+function getBearerAccount(request) {
+  const authorization = request.headers.authorization || "";
+  const token = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
+  return verifySessionToken(token);
+}
+
+function readJsonBody(request) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+
+    request.on("data", (chunk) => {
+      body += chunk;
+      if (body.length > 1024 * 128) {
+        request.destroy();
+        reject(new Error("Body too large"));
+      }
+    });
+
+    request.on("end", () => {
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch (error) {
+        reject(error);
+      }
+    });
+  });
+}
+
+function sendJson(response, statusCode, data) {
+  response.writeHead(statusCode, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+  });
+  response.end(JSON.stringify(data));
+}
+
+async function verifyGoogleCredential(credential) {
+  if (!googleClientId) {
+    return { error: "GOOGLE_CLIENT_ID is not configured." };
+  }
+
+  const verifyUrl = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential || "")}`;
+  const result = await fetch(verifyUrl);
+
+  if (!result.ok) {
+    return { error: "Google token verification failed." };
+  }
+
+  const payload = await result.json();
+
+  if (payload.aud !== googleClientId || !payload.sub) {
+    return { error: "Google token audience mismatch." };
+  }
+
+  return {
+    account: {
+      id: `google:${payload.sub}`,
+      name: payload.name || payload.email || "Google Player",
+      email: payload.email || "",
+    },
+  };
+}
+
+async function getStoredProfile(userId) {
+  if (!hasDatabase) {
+    return null;
+  }
+
+  const query = `${supabaseUrl}/rest/v1/player_profiles?user_id=eq.${encodeURIComponent(userId)}&select=profile`;
+  const result = await fetch(query, {
+    headers: {
+      apikey: supabaseServiceKey,
+      Authorization: `Bearer ${supabaseServiceKey}`,
+    },
+  });
+
+  if (!result.ok) {
+    throw new Error(`Profile fetch failed: ${result.status}`);
+  }
+
+  const rows = await result.json();
+  return rows[0]?.profile || null;
+}
+
+async function saveStoredProfile(userId, profile) {
+  if (!hasDatabase) {
+    return false;
+  }
+
+  const result = await fetch(`${supabaseUrl}/rest/v1/player_profiles?on_conflict=user_id`, {
+    method: "POST",
+    headers: {
+      apikey: supabaseServiceKey,
+      Authorization: `Bearer ${supabaseServiceKey}`,
+      "Content-Type": "application/json",
+      Prefer: "resolution=merge-duplicates,return=minimal",
+    },
+    body: JSON.stringify({
+      user_id: userId,
+      profile,
+      updated_at: new Date().toISOString(),
+    }),
+  });
+
+  if (!result.ok) {
+    throw new Error(`Profile save failed: ${result.status}`);
+  }
+
+  return true;
+}
+
+async function handleApi(request, response, pathname) {
+  try {
+    if (pathname === "/api/config" && request.method === "GET") {
+      sendJson(response, 200, {
+        googleClientId,
+        serverStorage: hasDatabase,
+      });
+      return true;
+    }
+
+    if (pathname === "/api/auth/google" && request.method === "POST") {
+      const body = await readJsonBody(request);
+      const verified = await verifyGoogleCredential(body.credential);
+
+      if (verified.error) {
+        sendJson(response, 400, { error: verified.error });
+        return true;
+      }
+
+      const profile = await getStoredProfile(verified.account.id);
+      sendJson(response, 200, {
+        account: verified.account,
+        token: signSession(verified.account),
+        profile,
+        serverStorage: hasDatabase,
+      });
+      return true;
+    }
+
+    if (pathname === "/api/profile" && request.method === "GET") {
+      const account = getBearerAccount(request);
+      if (!account) {
+        sendJson(response, 401, { error: "Unauthorized" });
+        return true;
+      }
+
+      sendJson(response, 200, {
+        profile: await getStoredProfile(account.sub),
+        serverStorage: hasDatabase,
+      });
+      return true;
+    }
+
+    if (pathname === "/api/profile" && request.method === "POST") {
+      const account = getBearerAccount(request);
+      if (!account) {
+        sendJson(response, 401, { error: "Unauthorized" });
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      await saveStoredProfile(account.sub, body.profile || {});
+      sendJson(response, 200, { ok: true, serverStorage: hasDatabase });
+      return true;
+    }
+  } catch (error) {
+    sendJson(response, 500, { error: error.message || "Server error" });
+    return true;
+  }
+
+  return false;
 }
 
 server.on("upgrade", (request, socket) => {
@@ -752,6 +984,18 @@ server.on("upgrade", (request, socket) => {
         const client = clients.get(id);
         if (client?.state) {
           damageClient(id, message.damage, message.sourceId);
+        }
+      } else if (message.type === "chat") {
+        const client = clients.get(id);
+        const text = sanitizeChatText(message.text);
+
+        if (client?.state && text) {
+          broadcast({
+            type: "chat",
+            id,
+            name: String(client.state.name || message.name || "Player").slice(0, 18),
+            text,
+          }, id);
         }
       } else if (message.type === "dead") {
         const client = clients.get(id);

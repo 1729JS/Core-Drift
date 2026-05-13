@@ -16,6 +16,12 @@ const upgradeButtons = document.querySelectorAll(".upgrade-choice");
 const knifeSwapSkill = document.querySelector("#knifeSwapSkill");
 const knifeSwapCooldown = document.querySelector("#knifeSwapCooldown");
 const leaderboard = document.querySelector("#leaderboard");
+const chatLog = document.querySelector("#chatLog");
+const chatForm = document.querySelector("#chatForm");
+const chatInput = document.querySelector("#chatInput");
+const googleSignIn = document.querySelector("#googleSignIn");
+const accountStatus = document.querySelector("#accountStatus");
+const accountSignOut = document.querySelector("#accountSignOut");
 const shopPanel = document.querySelector("#shopPanel");
 const shopClose = document.querySelector("#shopClose");
 const shopCoins = document.querySelector("#shopCoins");
@@ -42,6 +48,10 @@ const crateRespawnSeconds = 5;
 const corpseLifetime = 500;
 const pickupLifetimeMs = 5 * 60 * 1000;
 const knifeSwapCooldownSeconds = 5;
+const chatMessageLifetime = 6500;
+const maxChatMessages = 40;
+const profileStoragePrefix = "core-drift-profile:";
+const accountStorageKey = "core-drift-account";
 const shopDepth = 920;
 const doorHeight = 500;
 const shopDoor = {
@@ -227,11 +237,14 @@ let lastNetworkSend = 0;
 let sharedWorldActive = false;
 let nextLocalBulletId = 1;
 let shopToastTimer = 0;
+let activeAccount = null;
+let saveTimer = 0;
 
 const remotePlayers = new Map();
 const remoteBullets = [];
 const corpses = [];
 const teleportEffects = [];
+const chatMessages = [];
 
 function getCrateCount(kind) {
   return crates.filter((crate) => (crate.kind || "basic") === kind).length;
@@ -610,6 +623,396 @@ function escapeHtml(value) {
     '"': "&quot;",
     "'": "&#39;",
   })[char]);
+}
+
+function sanitizeChatText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
+function addChatMessage({ name = "Player", text = "", id = null, local = false }) {
+  const cleanText = sanitizeChatText(text);
+
+  if (!cleanText) {
+    return;
+  }
+
+  const message = {
+    id,
+    name: String(name || "Player").slice(0, 18),
+    text: cleanText,
+    local,
+    createdAt: performance.now(),
+  };
+
+  chatMessages.push(message);
+  while (chatMessages.length > maxChatMessages) {
+    chatMessages.shift();
+  }
+
+  if (id === localClientId || local) {
+    player.chatBubble = { text: cleanText, createdAt: message.createdAt };
+  } else if (id && remotePlayers.has(id)) {
+    remotePlayers.get(id).chatBubble = { text: cleanText, createdAt: message.createdAt };
+  }
+
+  updateChatLog();
+}
+
+function updateChatLog() {
+  if (!chatLog) {
+    return;
+  }
+
+  const now = performance.now();
+  const visible = chatMessages.filter((message) => now - message.createdAt <= chatMessageLifetime);
+  chatLog.innerHTML = visible
+    .slice(-8)
+    .map((message) => `<div class="chat-line"><b>${escapeHtml(message.name)}</b>: ${escapeHtml(message.text)}</div>`)
+    .join("");
+}
+
+function submitChat() {
+  const text = sanitizeChatText(chatInput?.value);
+
+  if (!text || !gameStarted) {
+    return;
+  }
+
+  if (chatInput) {
+    chatInput.value = "";
+    chatInput.blur();
+  }
+
+  const payload = { name: player.name || "Player", text };
+  addChatMessage({ ...payload, id: localClientId, local: true });
+  sendNetwork("chat", payload);
+}
+
+function decodeJwtPayload(token) {
+  try {
+    const payload = token.split(".")[1];
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(payload.length / 4) * 4, "=");
+    const bytes = Uint8Array.from(atob(normalized), (char) => char.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return null;
+  }
+}
+
+function getProfileKey() {
+  return `${profileStoragePrefix}${activeAccount?.id || "guest"}`;
+}
+
+function updateAccountUi() {
+  if (!accountStatus) {
+    return;
+  }
+
+  const clientId = window.CORE_DRIFT_GOOGLE_CLIENT_ID || "";
+
+  if (activeAccount?.id !== "guest") {
+    const storageLabel = activeAccount.serverStorage ? "server saved" : "local saved";
+    accountStatus.textContent = `Signed in: ${activeAccount.name || activeAccount.email} | ${storageLabel}`;
+    accountSignOut?.classList.remove("hidden");
+  } else {
+    accountStatus.textContent = clientId ? "Guest profile" : "Google sign-in needs a client ID.";
+    accountSignOut?.classList.add("hidden");
+  }
+}
+
+function setActiveAccount(account) {
+  activeAccount = account || { id: "guest", name: "Guest" };
+  localStorage.setItem(accountStorageKey, JSON.stringify(activeAccount));
+  updateAccountUi();
+}
+
+async function postJson(url, body, token = "") {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+async function authenticateGoogle(credential) {
+  const result = await postJson("/api/auth/google", { credential });
+  setActiveAccount({
+    ...result.account,
+    token: result.token,
+    serverStorage: Boolean(result.serverStorage),
+  });
+
+  if (result.profile) {
+    applyCharacterProfile(result.profile);
+  }
+
+  return result;
+}
+
+function captureCharacterProfile() {
+  return {
+    name: player.name,
+    level: player.level,
+    xp: player.xp,
+    xpToNext: player.xpToNext,
+    totalXp: player.totalXp,
+    coins: player.coins,
+    upgradePoints: player.upgradePoints,
+    maxSpeed: player.maxSpeed,
+    acceleration: player.acceleration,
+    dashSpeed: player.dashSpeed,
+    maxHealth: player.maxHealth,
+    health: Math.max(1, player.health),
+    shield: player.shield,
+    healAmount: player.healAmount,
+    damageMultiplier: player.damageMultiplier,
+    upgrades: { ...player.upgrades },
+    selectedSlot: weapons.selectedSlot,
+    slots: { ...weapons.slots },
+    weapons: {
+      knife: {
+        count: weapons.knife.count,
+        damage: weapons.knife.damage,
+        range: weapons.knife.range,
+        throwLifeBonus: weapons.knife.throwLifeBonus,
+        throwSpeedBonus: weapons.knife.throwSpeedBonus,
+        upgrades: { ...weapons.knife.upgrades },
+      },
+      glock: {
+        damage: weapons.glock.damage,
+        bulletSpeed: weapons.glock.bulletSpeed,
+        bulletLife: weapons.glock.bulletLife,
+        magazineSize: weapons.glock.magazineSize,
+        ammo: weapons.glock.ammo,
+        magAmmo: weapons.glock.magAmmo,
+        upgrades: { ...weapons.glock.upgrades },
+      },
+      awm: {
+        damage: weapons.awm.damage,
+        bulletSpeed: weapons.awm.bulletSpeed,
+        bulletLife: weapons.awm.bulletLife,
+        magazineSize: weapons.awm.magazineSize,
+        ammo: weapons.awm.ammo,
+        magAmmo: weapons.awm.magAmmo,
+        upgrades: { ...weapons.awm.upgrades },
+      },
+    },
+  };
+}
+
+function applyCharacterProfile(profile) {
+  if (!profile) {
+    return;
+  }
+
+  player.name = profile.name || player.name;
+  player.level = profile.level || 1;
+  player.xp = profile.xp || 0;
+  player.xpToNext = profile.xpToNext || 100;
+  player.totalXp = profile.totalXp || 0;
+  player.coins = profile.coins || 0;
+  player.upgradePoints = profile.upgradePoints || 0;
+  player.maxSpeed = profile.maxSpeed || baseStats.maxSpeed;
+  player.acceleration = profile.acceleration || baseStats.acceleration;
+  player.dashSpeed = profile.dashSpeed || baseStats.dashSpeed;
+  player.maxHealth = profile.maxHealth || baseStats.maxHealth;
+  player.health = Math.min(profile.health || player.maxHealth, player.maxHealth);
+  player.shield = Math.min(profile.shield || 0, player.maxShield);
+  player.healAmount = profile.healAmount || baseStats.healAmount;
+  player.damageMultiplier = profile.damageMultiplier || baseStats.damageMultiplier;
+  player.upgrades = { ...player.upgrades, ...(profile.upgrades || {}) };
+
+  weapons.selectedSlot = profile.selectedSlot || 1;
+  weapons.slots = { ...weapons.slots, ...(profile.slots || {}) };
+
+  for (const weaponName of ["knife", "glock", "awm"]) {
+    if (profile.weapons?.[weaponName]) {
+      Object.assign(weapons[weaponName], profile.weapons[weaponName]);
+      weapons[weaponName].reloadTimer = 0;
+    }
+  }
+
+  if (nicknameInput) {
+    nicknameInput.value = player.name;
+  }
+  updateInventory();
+  updateXpHud();
+  updateCoinHud();
+  updateShopHud();
+  updateUpgradePanel();
+}
+
+async function loadCharacterProfile() {
+  if (activeAccount?.token) {
+    try {
+      const response = await fetch("/api/profile", {
+        headers: { Authorization: `Bearer ${activeAccount.token}` },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        activeAccount.serverStorage = Boolean(data.serverStorage);
+        localStorage.setItem(accountStorageKey, JSON.stringify(activeAccount));
+        updateAccountUi();
+        if (data.profile) {
+          applyCharacterProfile(data.profile);
+          return;
+        }
+      }
+    } catch {
+      activeAccount.serverStorage = false;
+      updateAccountUi();
+    }
+  }
+
+  try {
+    const saved = JSON.parse(localStorage.getItem(getProfileKey()) || "null");
+    applyCharacterProfile(saved);
+  } catch {
+    localStorage.removeItem(getProfileKey());
+  }
+}
+
+async function saveCharacterProfile() {
+  if (!gameStarted || deathPending) {
+    return;
+  }
+
+  const profile = captureCharacterProfile();
+  localStorage.setItem(getProfileKey(), JSON.stringify(profile));
+
+  if (activeAccount?.token) {
+    try {
+      const result = await postJson("/api/profile", { profile }, activeAccount.token);
+      activeAccount.serverStorage = Boolean(result.serverStorage);
+      localStorage.setItem(accountStorageKey, JSON.stringify(activeAccount));
+      updateAccountUi();
+    } catch {
+      activeAccount.serverStorage = false;
+      updateAccountUi();
+    }
+  }
+}
+
+function saveRespawnProfileAfterDeath() {
+  const profile = captureCharacterProfile();
+  profile.health = profile.maxHealth;
+  profile.shield = 0;
+  profile.selectedSlot = 1;
+  profile.slots = { 1: "knife", 2: null, 3: null };
+  profile.weapons.knife.count = 1;
+  profile.weapons.glock.ammo = 0;
+  profile.weapons.glock.magAmmo = 0;
+  profile.weapons.awm.ammo = 0;
+  profile.weapons.awm.magAmmo = 0;
+  localStorage.setItem(getProfileKey(), JSON.stringify(profile));
+  if (activeAccount?.token) {
+    postJson("/api/profile", { profile }, activeAccount.token).catch(() => {});
+  }
+}
+
+async function initAccountSystem() {
+  try {
+    activeAccount = JSON.parse(localStorage.getItem(accountStorageKey) || "null") || { id: "guest", name: "Guest" };
+  } catch {
+    activeAccount = { id: "guest", name: "Guest" };
+  }
+
+  try {
+    const response = await fetch("/api/config");
+    if (response.ok) {
+      const config = await response.json();
+      if (config.googleClientId) {
+        window.CORE_DRIFT_GOOGLE_CLIENT_ID = config.googleClientId;
+      }
+    }
+  } catch {
+    // File mode or offline local testing keeps the inline fallback.
+  }
+
+  updateAccountUi();
+
+  const clientId = window.CORE_DRIFT_GOOGLE_CLIENT_ID || "";
+  if (!clientId || !googleSignIn) {
+    return;
+  }
+
+  const renderGoogleButton = () => {
+    if (!window.google?.accounts?.id) {
+      return false;
+    }
+
+    window.google.accounts.id.initialize({
+      client_id: clientId,
+      callback: async (response) => {
+        const profile = decodeJwtPayload(response.credential);
+        try {
+          await authenticateGoogle(response.credential);
+        } catch {
+          if (profile?.sub) {
+            setActiveAccount({
+              id: `google:${profile.sub}`,
+              name: profile.name || profile.email || "Google Player",
+              email: profile.email || "",
+              serverStorage: false,
+            });
+          }
+        }
+
+        if (!profile?.sub) {
+          return;
+        }
+
+        if (nicknameInput && profile.name && (!nicknameInput.value || nicknameInput.value === "Player")) {
+          nicknameInput.value = profile.name.slice(0, 14);
+        }
+        await loadCharacterProfile();
+      },
+    });
+    window.google.accounts.id.renderButton(googleSignIn, {
+      theme: "outline",
+      size: "large",
+      width: 260,
+    });
+    return true;
+  };
+
+  if (!renderGoogleButton()) {
+    window.addEventListener("load", renderGoogleButton, { once: true });
+  }
+}
+
+function drawChatBubble(text, yOffset) {
+  const cleanText = sanitizeChatText(text);
+
+  if (!cleanText) {
+    return;
+  }
+
+  ctx.save();
+  ctx.font = "800 11px Inter, system-ui, sans-serif";
+  const bubbleWidth = Math.min(230, Math.max(58, ctx.measureText(cleanText).width + 20));
+  ctx.fillStyle = "rgba(16, 18, 20, 0.78)";
+  ctx.strokeStyle = "rgba(141, 244, 223, 0.38)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(-bubbleWidth / 2, yOffset - 22, bubbleWidth, 20, 7);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#f6f2e9";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(cleanText, 0, yOffset - 12, bubbleWidth - 14);
+  ctx.restore();
 }
 
 function updateLeaderboard() {
@@ -1012,6 +1415,7 @@ function handleLocalDeath() {
   player.knifeCharge = 0;
   addCorpse({ x: player.x, y: player.y, name: player.name });
   dropAllLoot(player.x, player.y);
+  saveRespawnProfileAfterDeath();
   sendNetwork("dead", {});
 
   localDeathTimeout = setTimeout(() => {
@@ -1388,6 +1792,13 @@ function connectMultiplayer() {
       syncWorldPickups(message.world.pickups);
     } else if (message.type === "effect") {
       playEffect(message.effect);
+    } else if (message.type === "chat") {
+      addChatMessage({
+        id: message.id,
+        name: message.name,
+        text: message.text,
+        local: message.id === localClientId,
+      });
     } else if (message.type === "teleport") {
       addTeleportEffect(player.x, player.y);
       addTeleportEffect(message.x, message.y);
@@ -1463,6 +1874,7 @@ function setRemotePlayerState(id, state) {
     renderX: previous?.renderX ?? state.x,
     renderY: previous?.renderY ?? state.y,
     renderAimAngle: previous?.renderAimAngle ?? state.aimAngle ?? 0,
+    chatBubble: previous?.chatBubble,
   });
 }
 
@@ -2163,10 +2575,16 @@ function update(delta) {
   camera.y += (player.y - camera.y) * camera.smoothing;
 
   lastNetworkSend -= delta;
+  saveTimer -= delta;
 
   if (lastNetworkSend <= 0) {
     sendNetwork("state", { state: getPlayerSnapshot() });
     lastNetworkSend = 0.033;
+  }
+
+  if (saveTimer <= 0) {
+    saveCharacterProfile();
+    saveTimer = activeAccount?.token ? 8 : 1;
   }
 
   coords.textContent = `${Math.round(player.x)}, ${Math.round(player.y)}`;
@@ -2174,6 +2592,7 @@ function update(delta) {
   healthBarFill.style.width = `${clamp(player.health / player.maxHealth, 0, 1) * 100}%`;
   updateXpHud();
   updateCoinHud();
+  updateChatLog();
   updateSkillHud();
   updateUpgradePanel();
   updateInventory();
@@ -2993,6 +3412,10 @@ function drawRemotePlayers(time) {
     ctx.textBaseline = "middle";
     ctx.fillText(remote.name || "Player", 0, -player.radius - 24);
 
+    if (remote.chatBubble && performance.now() - remote.chatBubble.createdAt <= chatMessageLifetime) {
+      drawChatBubble(remote.chatBubble.text, -player.radius - 42);
+    }
+
     const hpRatio = Math.max(0, remote.health / remote.maxHealth);
     ctx.fillStyle = "rgba(16, 18, 20, 0.72)";
     ctx.fillRect(-22, player.radius + 15, 44, 5);
@@ -3250,6 +3673,10 @@ function drawPlayer(time) {
   ctx.textBaseline = "middle";
   ctx.fillText(player.name, 0, -player.radius - 24);
 
+  if (player.chatBubble && performance.now() - player.chatBubble.createdAt <= chatMessageLifetime) {
+    drawChatBubble(player.chatBubble.text, -player.radius - 42);
+  }
+
   ctx.restore();
 }
 
@@ -3357,14 +3784,16 @@ function draw(time) {
   }
 }
 
-function startGame() {
+async function startGame() {
   if (gameStarted) {
     return;
   }
 
   resetGameState();
-  gameStarted = true;
   player.name = nicknameInput.value.trim() || "Player";
+  await loadCharacterProfile();
+  player.name = nicknameInput.value.trim() || player.name || "Player";
+  gameStarted = true;
   connectMultiplayer();
   sendNetwork("respawn", { state: getPlayerSnapshot() });
   lastTime = performance.now();
@@ -3387,7 +3816,23 @@ function tick(time) {
 
 window.addEventListener("resize", resize);
 startButton.addEventListener("click", startGame);
+chatForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  submitChat();
+});
+chatInput?.addEventListener("mousedown", (event) => event.stopPropagation());
+chatInput?.addEventListener("keydown", (event) => {
+  event.stopPropagation();
+
+  if (event.key === "Escape") {
+    chatInput.blur();
+  }
+});
 window.addEventListener("keydown", (event) => {
+  if (event.target === chatInput) {
+    return;
+  }
+
   if (!gameStarted && event.key === "Enter") {
     event.preventDefault();
     startGame();
@@ -3402,6 +3847,12 @@ window.addEventListener("keydown", (event) => {
     if (event.key === "Escape" || event.key.toLowerCase() === "k") {
       closeShop();
     }
+    return;
+  }
+
+  if (event.key === "Enter") {
+    event.preventDefault();
+    chatInput?.focus();
     return;
   }
 
@@ -3550,6 +4001,13 @@ for (const button of upgradeButtons) {
   });
 }
 
+accountSignOut?.addEventListener("click", () => {
+  saveCharacterProfile();
+  setActiveAccount({ id: "guest", name: "Guest" });
+});
+window.addEventListener("beforeunload", saveCharacterProfile);
+
+initAccountSystem();
 resize();
 document.body.classList.add("game-pending");
 createCrates();
