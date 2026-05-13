@@ -9,8 +9,11 @@ const healthStatus = document.querySelector("#healthStatus");
 const healthBarFill = document.querySelector("#healthBarFill");
 const xpStatus = document.querySelector("#xpStatus");
 const xpBarFill = document.querySelector("#xpBarFill");
+const coinStatus = document.querySelector("#coinStatus");
 const upgradePanel = document.querySelector("#upgradePanel");
 const upgradeButtons = document.querySelectorAll(".upgrade-choice");
+const knifeSwapSkill = document.querySelector("#knifeSwapSkill");
+const knifeSwapCooldown = document.querySelector("#knifeSwapCooldown");
 const ammoStatus = document.querySelector("#ammoStatus");
 const awmAmmoStatus = document.querySelector("#awmAmmoStatus");
 const inventorySlots = document.querySelectorAll(".slot");
@@ -32,6 +35,7 @@ const maxGoldCrates = 10;
 const crateRespawnSeconds = 5;
 const corpseLifetime = 500;
 const pickupLifetimeMs = 5 * 60 * 1000;
+const knifeSwapCooldownSeconds = 5;
 
 const baseStats = {
   maxSpeed: 480,
@@ -48,6 +52,11 @@ const goldCrateXpValue = 350;
 const basicCrateHealth = 150;
 const metalCrateHealth = 500;
 const goldCrateHealth = 1000;
+const coinValues = {
+  bronze: 5,
+  silver: 10,
+  gold: 100,
+};
 const upgradeSteps = {
   speed: { maxSpeed: 35, acceleration: 90 },
   dash: { dashSpeed: 90 },
@@ -75,6 +84,8 @@ const player = {
   shield: 0,
   maxShield: 125,
   healAmount: baseStats.healAmount,
+  coins: 0,
+  knifeSwapTimer: 0,
   level: 1,
   xp: 0,
   xpToNext: 100,
@@ -247,6 +258,8 @@ function resetGameState() {
   player.health = player.maxHealth;
   player.shield = 0;
   player.healAmount = baseStats.healAmount;
+  player.coins = 0;
+  player.knifeSwapTimer = 0;
   player.level = 1;
   player.xp = 0;
   player.xpToNext = 100;
@@ -294,6 +307,8 @@ function resetGameState() {
   }
   updateInventory();
   updateXpHud();
+  updateCoinHud();
+  updateSkillHud();
   updateUpgradePanel();
 }
 
@@ -301,6 +316,7 @@ function showStartScreen() {
   gameStarted = false;
   document.body.classList.add("game-pending");
   startScreen.classList.remove("hidden");
+  updateSkillHud();
   updateUpgradePanel();
 }
 
@@ -482,6 +498,24 @@ function updateXpHud() {
   xpBarFill.style.width = `${clamp(player.xp / player.xpToNext, 0, 1) * 100}%`;
 }
 
+function updateCoinHud() {
+  if (!coinStatus) {
+    return;
+  }
+
+  coinStatus.textContent = `Coins ${player.coins}`;
+}
+
+function updateSkillHud() {
+  if (!knifeSwapSkill || !knifeSwapCooldown) {
+    return;
+  }
+
+  const ready = player.knifeSwapTimer <= 0;
+  knifeSwapSkill.classList.toggle("ready", ready);
+  knifeSwapCooldown.textContent = ready ? "" : Math.ceil(player.knifeSwapTimer);
+}
+
 function updateUpgradePanel() {
   if (!upgradePanel) {
     return;
@@ -511,12 +545,15 @@ function damageCrate(index, damage) {
     if ((crate.kind || "basic") === "metal") {
       spawnPickup(crate.x, crate.y);
       spawnPickup(crate.x + 28, crate.y - 20, "xp", { value: metalCrateXpValue });
+      spawnPickup(crate.x - 28, crate.y + 20, "coin", { coinKind: "silver", value: coinValues.silver });
     } else if ((crate.kind || "basic") === "gold") {
       spawnPickup(crate.x, crate.y);
       spawnPickup(crate.x + 30, crate.y - 22, "xp", { value: goldCrateXpValue });
+      spawnPickup(crate.x - 30, crate.y + 22, "coin", { coinKind: "gold", value: coinValues.gold });
     } else {
       spawnPickup(crate.x, crate.y);
       spawnPickup(crate.x + 26, crate.y - 18, "xp", { value: xpDropValue });
+      spawnPickup(crate.x - 26, crate.y + 18, "coin", { coinKind: "bronze", value: coinValues.bronze });
     }
     crates.splice(index, 1);
     playCrateBreakSound();
@@ -541,6 +578,7 @@ function spawnPickup(x, y, forcedType = null, data = {}) {
     ammo: data.ammo,
     magAmmo: data.magAmmo,
     value: data.value,
+    coinKind: data.coinKind,
     expiresAt: data.expiresAt || Date.now() + pickupLifetimeMs,
     radius: 18,
     bob: Math.random() * Math.PI * 2,
@@ -646,6 +684,10 @@ function canCollectPickup(item) {
     return true;
   }
 
+  if (type === "coin") {
+    return true;
+  }
+
   if (type === "knife" || type === "glock" || type === "awm") {
     return Boolean([1, 2, 3].find((slot) => weapons.slots[slot] === type) || [1, 2, 3].find((slot) => !weapons.slots[slot]));
   }
@@ -740,6 +782,10 @@ function collectPickup(index) {
   } else if (pickup.type === "xp") {
     gainXp(pickup.value || xpDropValue);
     collected = true;
+  } else if (pickup.type === "coin") {
+    player.coins += pickup.value || coinValues[pickup.coinKind] || coinValues.bronze;
+    updateCoinHud();
+    collected = true;
   }
 
   if (!collected) {
@@ -767,6 +813,10 @@ function applyPickupItem(item) {
     collected = true;
   } else if (type === "xp") {
     gainXp(item.value || xpDropValue);
+    collected = true;
+  } else if (type === "coin") {
+    player.coins += item.value || coinValues[item.coinKind] || coinValues.bronze;
+    updateCoinHud();
     collected = true;
   }
 
@@ -848,8 +898,8 @@ function playGunSound(weaponName) {
 
 function playPickupSound(type) {
   const base = type === "armor" ? 260 : type === "medkit" ? 520 : 390;
-  playTone({ frequency: base, duration: 0.08, type: "triangle", gain: 0.07 });
-  playTone({ frequency: base * 1.5, duration: 0.12, type: "triangle", gain: 0.05, when: 0.06 });
+  playTone({ frequency: type === "coin" ? 720 : base, duration: 0.08, type: "triangle", gain: 0.07 });
+  playTone({ frequency: type === "coin" ? 1080 : base * 1.5, duration: 0.12, type: "triangle", gain: 0.05, when: 0.06 });
 }
 
 function playCrateHitSound() {
@@ -939,17 +989,13 @@ function connectMultiplayer() {
     } else if (message.type === "effect") {
       playEffect(message.effect);
     } else if (message.type === "teleport") {
-      const localBullet = bullets.find((bullet) => bullet.id === message.bulletId);
       addTeleportEffect(player.x, player.y);
       addTeleportEffect(message.x, message.y);
       player.x = message.x;
       player.y = message.y;
       camera.x = player.x;
       camera.y = player.y;
-      if (localBullet) {
-        localBullet.x = message.bulletX;
-        localBullet.y = message.bulletY;
-      }
+      player.knifeSwapTimer = knifeSwapCooldownSeconds;
     } else if (message.type === "knifeSwap") {
       const remoteBullet = remoteBullets.find((bullet) => bullet.id === message.bulletId && bullet.ownerId === message.id);
       const remote = remotePlayers.get(message.id);
@@ -962,14 +1008,17 @@ function connectMultiplayer() {
         remote.renderY = message.playerY;
       }
       if (remoteBullet) {
-        remoteBullet.x = message.bulletX;
-        remoteBullet.y = message.bulletY;
+        remoteBullets.splice(remoteBullets.indexOf(remoteBullet), 1);
       }
     } else if (message.type === "pickupGranted") {
       applyPickupItem(message.item);
     } else if (message.type === "xpGranted") {
       gainXp(message.value || xpDropValue);
       playPickupSound("xp");
+    } else if (message.type === "coinGranted") {
+      player.coins += message.value || coinValues[message.coinKind] || coinValues.bronze;
+      updateCoinHud();
+      playPickupSound("coin");
     } else if (message.type === "health") {
       player.health = message.health;
       player.shield = message.shield;
@@ -1025,6 +1074,10 @@ function sendNetwork(type, payload) {
 }
 
 function swapWithThrownKnife() {
+  if (player.knifeSwapTimer > 0) {
+    return false;
+  }
+
   const knife = [...bullets].reverse().find((bullet) => bullet.weapon === "knife" && bullet.life > 0);
 
   if (!knife) {
@@ -1038,10 +1091,13 @@ function swapWithThrownKnife() {
 
   player.x = clamp(previousKnifeX, player.radius, world.width - player.radius);
   player.y = clamp(previousKnifeY, player.radius, world.height - player.radius);
-  knife.x = previousPlayerX;
-  knife.y = previousPlayerY;
+  if (!sharedWorldActive) {
+    dropPickupAt(previousPlayerX, previousPlayerY, knife.pickup || { type: "knife", count: 1 });
+  }
+  bullets.splice(bullets.indexOf(knife), 1);
   camera.x = player.x;
   camera.y = player.y;
+  player.knifeSwapTimer = knifeSwapCooldownSeconds;
   addTeleportEffect(previousPlayerX, previousPlayerY);
   addTeleportEffect(player.x, player.y);
   sendNetwork("knifeSwap", { bulletId: knife.id });
@@ -1078,6 +1134,7 @@ function getPlayerSnapshot() {
     level: player.level,
     xp: player.xp,
     xpToNext: player.xpToNext,
+    coins: player.coins,
     upgradePoints: player.upgradePoints,
     damageMultiplier: player.damageMultiplier,
     upgrades: player.upgrades,
@@ -1415,6 +1472,7 @@ function update(delta) {
   player.shotTimer -= delta;
   player.swingTimer = Math.max(0, player.swingTimer - delta);
   player.punchTimer = Math.max(0, player.punchTimer - delta);
+  player.knifeSwapTimer = Math.max(0, player.knifeSwapTimer - delta);
   if (player.knifeCharging && weapons.slots[weapons.selectedSlot] === "knife") {
     player.knifeCharge = Math.min(player.knifeChargeMax, player.knifeCharge + delta);
   }
@@ -1668,6 +1726,8 @@ function update(delta) {
   healthStatus.textContent = `HP ${Math.ceil(player.health)} / ${player.maxHealth} | SH ${Math.ceil(player.shield)}`;
   healthBarFill.style.width = `${clamp(player.health / player.maxHealth, 0, 1) * 100}%`;
   updateXpHud();
+  updateCoinHud();
+  updateSkillHud();
   updateUpgradePanel();
   updateInventory();
 
@@ -2139,6 +2199,26 @@ function drawPickups(time) {
           : "rgba(141, 244, 223, 0.38)";
       ctx.beginPath();
       ctx.arc(4, 3, 4, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (pickup.type === "coin") {
+      const coinKind = pickup.coinKind || "bronze";
+      const fill = coinKind === "gold" ? "#ffcf5f" : coinKind === "silver" ? "#d7dde2" : "#b9783d";
+      const stroke = coinKind === "gold" ? "#8b5e14" : coinKind === "silver" ? "#68727c" : "#5b3725";
+      ctx.fillStyle = fill;
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, 11, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(16, 18, 20, 0.28)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, 6, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(255, 255, 255, 0.62)";
+      ctx.beginPath();
+      ctx.arc(-4, -5, 3, 0, Math.PI * 2);
       ctx.fill();
     }
 
@@ -2870,5 +2950,7 @@ document.body.classList.add("game-pending");
 createCrates();
 updateInventory();
 updateXpHud();
+updateCoinHud();
+updateSkillHud();
 updateUpgradePanel();
 requestAnimationFrame(tick);

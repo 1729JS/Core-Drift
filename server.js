@@ -19,6 +19,11 @@ const metalCrateXpValue = 125;
 const goldCrateXpValue = 350;
 const pickupLifetimeMs = 5 * 60 * 1000;
 const defaultPlayerHealth = 200;
+const coinValues = {
+  bronze: 5,
+  silver: 10,
+  gold: 100,
+};
 const crates = [];
 const pickups = [];
 const bullets = [];
@@ -134,6 +139,7 @@ function spawnPickup(x, y, forcedType = null, data = {}) {
     ammo: data.ammo,
     magAmmo: data.magAmmo,
     value: data.value,
+    coinKind: data.coinKind,
     expiresAt: Date.now() + pickupLifetimeMs,
     radius: 18,
     bob: Math.random() * Math.PI * 2,
@@ -293,12 +299,15 @@ function damageCrate(crate, amount) {
     if ((crate.kind || "basic") === "metal") {
       spawnPickup(crate.x, crate.y);
       spawnPickup(crate.x + 28, crate.y - 20, "xp", { value: metalCrateXpValue });
+      spawnPickup(crate.x - 28, crate.y + 20, "coin", { coinKind: "silver", value: coinValues.silver });
     } else if ((crate.kind || "basic") === "gold") {
       spawnPickup(crate.x, crate.y);
       spawnPickup(crate.x + 30, crate.y - 22, "xp", { value: goldCrateXpValue });
+      spawnPickup(crate.x - 30, crate.y + 22, "coin", { coinKind: "gold", value: coinValues.gold });
     } else {
       spawnPickup(crate.x, crate.y);
       spawnPickup(crate.x + 26, crate.y - 18, "xp", { value: xpDropValue });
+      spawnPickup(crate.x - 26, crate.y + 18, "coin", { coinKind: "bronze", value: coinValues.bronze });
     }
     crates.splice(crates.indexOf(crate), 1);
   }
@@ -638,8 +647,9 @@ server.on("upgrade", (request, socket) => {
           const nextPlayerX = clamp(bullet.x, 24, world.width - 24);
           const nextPlayerY = clamp(bullet.y, 24, world.height - 24);
 
-          bullet.x = previousPlayerX;
-          bullet.y = previousPlayerY;
+          bullets.splice(bullets.indexOf(bullet), 1);
+          spawnPickup(previousPlayerX, previousPlayerY, "knife", { count: 1 });
+          broadcastWorld();
           client.state = { ...client.state, x: nextPlayerX, y: nextPlayerY };
 
           send(socket, {
@@ -647,8 +657,6 @@ server.on("upgrade", (request, socket) => {
             x: nextPlayerX,
             y: nextPlayerY,
             bulletId: bullet.id,
-            bulletX: bullet.x,
-            bulletY: bullet.y,
           });
           broadcast({ type: "state", id, state: client.state }, id);
           broadcast(
@@ -658,13 +666,13 @@ server.on("upgrade", (request, socket) => {
               bulletId: bullet.id,
               playerX: nextPlayerX,
               playerY: nextPlayerY,
-              bulletX: bullet.x,
-              bulletY: bullet.y,
+              bulletX: previousPlayerX,
+              bulletY: previousPlayerY,
             },
             id,
           );
           broadcastEffect({ type: "teleport", x: nextPlayerX, y: nextPlayerY });
-          broadcastEffect({ type: "teleport", x: bullet.x, y: bullet.y });
+          broadcastEffect({ type: "teleport", x: previousPlayerX, y: previousPlayerY });
         }
       } else if (message.type === "melee") {
         handleMelee(id, message.attack);
@@ -734,6 +742,12 @@ server.on("upgrade", (request, socket) => {
             send(socket, { type: "health", health: client.state.health, shield: client.state.shield || 0 });
           } else if (pickup.type === "xp") {
             send(socket, { type: "xpGranted", value: pickup.value || xpDropValue });
+          } else if (pickup.type === "coin") {
+            send(socket, {
+              type: "coinGranted",
+              value: pickup.value || coinValues[pickup.coinKind] || coinValues.bronze,
+              coinKind: pickup.coinKind || "bronze",
+            });
           } else {
             send(socket, { type: "pickupGranted", item: pickup });
           }

@@ -140,6 +140,7 @@ body {
 
 .game-pending .hud,
 .game-pending .inventory,
+.game-pending .skill-slot,
 .game-pending .upgrade-panel {
   display: none;
 }
@@ -164,7 +165,8 @@ body {
 .stats,
 .health-status,
 .dash-status,
-.xp-status {
+.xp-status,
+.coin-status {
   min-width: 86px;
   padding: 6px 9px;
   border: 1px solid rgba(246, 242, 233, 0.18);
@@ -206,6 +208,13 @@ body {
   min-width: 158px;
   border-color: rgba(255, 207, 95, 0.42);
   color: #ffdf86;
+}
+
+.coin-status {
+  min-width: 88px;
+  border-color: rgba(255, 207, 95, 0.4);
+  color: #ffcf5f;
+  text-align: center;
 }
 
 .xp-label {
@@ -303,6 +312,74 @@ body {
   gap: 10px;
   transform: translateX(-50%);
   pointer-events: auto;
+}
+
+.skill-slot {
+  position: fixed;
+  left: calc(50% + 146px);
+  bottom: 22px;
+  width: 54px;
+  height: 54px;
+  border: 1px solid rgba(141, 244, 223, 0.42);
+  border-radius: 8px;
+  background: rgba(16, 18, 20, 0.68);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(10px);
+  pointer-events: none;
+}
+
+.skill-key {
+  position: absolute;
+  top: 5px;
+  left: 6px;
+  color: #8df4df;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.skill-icon {
+  position: absolute;
+  left: 18px;
+  top: 17px;
+  width: 24px;
+  height: 20px;
+  transform: rotate(-32deg);
+}
+
+.skill-icon::before {
+  position: absolute;
+  inset: 7px 0 7px 5px;
+  content: "";
+  border-radius: 999px;
+  background: #d9e0e3;
+  box-shadow: 0 0 0 2px #55666f;
+}
+
+.skill-icon::after {
+  position: absolute;
+  left: 0;
+  top: 7px;
+  width: 8px;
+  height: 6px;
+  content: "";
+  border-radius: 2px;
+  background: #20272b;
+}
+
+.skill-cooldown {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: inherit;
+  background: rgba(0, 0, 0, 0.58);
+  color: #f6f2e9;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.skill-slot.ready .skill-cooldown {
+  display: none;
 }
 
 .slot {
