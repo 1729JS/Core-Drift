@@ -36,7 +36,7 @@ const baseStats = {
   maxSpeed: 480,
   acceleration: 1620,
   dashSpeed: 980,
-  maxHealth: 200,
+  maxHealth: 500,
   healAmount: 60,
   damageMultiplier: 1,
 };
@@ -67,8 +67,8 @@ const player = {
   dashCooldown: 3,
   dashTimer: 0,
   dashActiveTimer: 0,
-  health: 200,
-  maxHealth: 200,
+  health: 500,
+  maxHealth: 500,
   shield: 0,
   maxShield: 125,
   healAmount: baseStats.healAmount,
@@ -490,7 +490,8 @@ function damageCrate(index, damage) {
 
   if (crate.hp <= 0) {
     if ((crate.kind || "basic") === "metal") {
-      spawnPickup(crate.x, crate.y, "xp", { value: metalCrateXpValue });
+      spawnPickup(crate.x, crate.y);
+      spawnPickup(crate.x + 28, crate.y - 20, "xp", { value: metalCrateXpValue });
     } else {
       spawnPickup(crate.x, crate.y);
       spawnPickup(crate.x + 26, crate.y - 18, "xp", { value: xpDropValue });
@@ -1813,41 +1814,100 @@ function drawCrates() {
     ctx.rotate(crate.rotation);
 
     if ((crate.kind || "basic") === "metal") {
-      const gradient = ctx.createLinearGradient(-half, -half, half, half);
-      gradient.addColorStop(0, "#d4dae0");
-      gradient.addColorStop(0.35, "#6d7881");
-      gradient.addColorStop(0.7, "#2d353c");
-      gradient.addColorStop(1, "#aeb7bf");
-      ctx.fillStyle = gradient;
-      ctx.strokeStyle = "#12181d";
-      ctx.lineWidth = 5;
+      const lidGradient = ctx.createLinearGradient(0, -half, 0, 4);
+      lidGradient.addColorStop(0, "#bcc4c9");
+      lidGradient.addColorStop(0.48, "#727b82");
+      lidGradient.addColorStop(1, "#30383f");
+      const bodyGradient = ctx.createLinearGradient(-half, 0, half, half);
+      bodyGradient.addColorStop(0, "#707982");
+      bodyGradient.addColorStop(0.45, "#3f474f");
+      bodyGradient.addColorStop(1, "#1d242a");
+
+      ctx.fillStyle = bodyGradient;
+      ctx.strokeStyle = "#11171c";
+      ctx.lineWidth = 4;
       ctx.beginPath();
-      ctx.roundRect(-half, -half, crate.size, crate.size, 7);
+      ctx.roundRect(-half, -4, crate.size, half + 16, 6);
       ctx.fill();
       ctx.stroke();
 
-      ctx.strokeStyle = "rgba(246, 242, 233, 0.28)";
-      ctx.lineWidth = 2;
-      for (let offset = -half + 12; offset < half; offset += 13) {
+      ctx.fillStyle = lidGradient;
+      ctx.beginPath();
+      ctx.moveTo(-half, -3);
+      ctx.quadraticCurveTo(-half * 0.82, -half - 14, 0, -half - 16);
+      ctx.quadraticCurveTo(half * 0.82, -half - 14, half, -3);
+      ctx.lineTo(half, 6);
+      ctx.lineTo(-half, 6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.strokeStyle = "#161d23";
+      ctx.lineWidth = 7;
+      for (const stripeX of [-half * 0.55, half * 0.55]) {
         ctx.beginPath();
-        ctx.moveTo(offset, -half + 6);
-        ctx.lineTo(offset + 18, half - 6);
+        ctx.moveTo(stripeX, -half - 6);
+        ctx.lineTo(stripeX, half + 10);
         ctx.stroke();
       }
 
-      ctx.rotate(-crate.rotation);
-      ctx.fillStyle = "rgba(255, 207, 95, 0.16)";
-      ctx.strokeStyle = "rgba(255, 207, 95, 0.72)";
+      ctx.strokeStyle = "rgba(238, 244, 246, 0.28)";
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.roundRect(-24, -10, 48, 20, 6);
+      ctx.moveTo(-half + 8, -half * 0.45);
+      ctx.lineTo(half - 10, -half * 0.58);
+      ctx.moveTo(-half + 10, half * 0.38);
+      ctx.lineTo(half - 12, half * 0.28);
+      ctx.stroke();
+
+      ctx.fillStyle = "#9aa4aa";
+      for (const rivetX of [-half + 10, -half * 0.55, 0, half * 0.55, half - 10]) {
+        for (const rivetY of [-half * 0.56, half * 0.52]) {
+          ctx.beginPath();
+          ctx.arc(rivetX, rivetY, 2.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      ctx.fillStyle = "#5b6269";
+      ctx.strokeStyle = "#151b20";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.roundRect(-13, -5, 26, 30, 5);
       ctx.fill();
       ctx.stroke();
-      ctx.fillStyle = "#ffcf5f";
-      ctx.font = "900 11px Inter, system-ui, sans-serif";
+      ctx.fillStyle = "#12181d";
+      ctx.beginPath();
+      ctx.arc(0, 9, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillRect(-2, 9, 4, 10);
+
+      ctx.rotate(-crate.rotation);
+      ctx.translate(0, -half - 30);
+      ctx.fillStyle = "rgba(13, 18, 20, 0.84)";
+      ctx.strokeStyle = "#5ff0c7";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.roundRect(-18, -18, 36, 36, 8);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "#f07d5f";
+      ctx.strokeStyle = "#ffd98d";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, 12, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "rgba(255, 255, 255, 0.68)";
+      ctx.beginPath();
+      ctx.arc(-5, -5, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.font = "900 8px Inter, system-ui, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("XP 125", 0, 0);
+      ctx.fillStyle = "#2c1712";
+      ctx.fillText("XP", 0, 2);
+      ctx.translate(0, half + 30);
       ctx.rotate(crate.rotation);
     } else {
       ctx.fillStyle = "#b77a3d";

@@ -15,6 +15,7 @@ const metalCrateHealth = Math.round(basicCrateHealth * 1.5);
 const xpDropValue = 38;
 const metalCrateXpValue = 125;
 const pickupLifetimeMs = 5 * 60 * 1000;
+const defaultPlayerHealth = 500;
 const crates = [];
 const pickups = [];
 const bullets = [];
@@ -282,7 +283,8 @@ function damageCrate(crate, amount) {
 
   if (crate.hp <= 0) {
     if ((crate.kind || "basic") === "metal") {
-      spawnPickup(crate.x, crate.y, "xp", { value: metalCrateXpValue });
+      spawnPickup(crate.x, crate.y);
+      spawnPickup(crate.x + 28, crate.y - 20, "xp", { value: metalCrateXpValue });
     } else {
       spawnPickup(crate.x, crate.y);
       spawnPickup(crate.x + 26, crate.y - 18, "xp", { value: xpDropValue });
@@ -560,7 +562,7 @@ server.on("upgrade", (request, socket) => {
         const client = clients.get(id);
         if (client) {
           const previous = client.state || {};
-          const nextMaxHealth = message.state?.maxHealth ?? previous.maxHealth ?? 200;
+          const nextMaxHealth = message.state?.maxHealth ?? previous.maxHealth ?? defaultPlayerHealth;
           const previousMaxHealth = previous.maxHealth ?? nextMaxHealth;
           let nextHealth = previous.health ?? message.state?.health ?? nextMaxHealth;
 
@@ -582,8 +584,8 @@ server.on("upgrade", (request, socket) => {
         if (client) {
           client.state = {
             ...message.state,
-            health: message.state?.maxHealth || 200,
-            maxHealth: message.state?.maxHealth || 200,
+            health: message.state?.maxHealth || defaultPlayerHealth,
+            maxHealth: message.state?.maxHealth || defaultPlayerHealth,
             shield: 0,
             maxShield: message.state?.maxShield || 125,
           };
@@ -645,7 +647,7 @@ server.on("upgrade", (request, socket) => {
             continue;
           }
 
-          if (pickup.type === "medkit" && (client.state.health || 0) >= (client.state.maxHealth || 200)) {
+          if (pickup.type === "medkit" && (client.state.health || 0) >= (client.state.maxHealth || defaultPlayerHealth)) {
             continue;
           }
 
@@ -658,7 +660,10 @@ server.on("upgrade", (request, socket) => {
           } else if (pickup.type === "medkit") {
             client.state = {
               ...client.state,
-              health: Math.min(client.state.maxHealth || 200, (client.state.health || 200) + (client.state.healAmount || 60)),
+              health: Math.min(
+                client.state.maxHealth || defaultPlayerHealth,
+                (client.state.health || defaultPlayerHealth) + (client.state.healAmount || 60),
+              ),
             };
             send(socket, { type: "health", health: client.state.health, shield: client.state.shield || 0 });
           } else if (pickup.type === "xp") {
