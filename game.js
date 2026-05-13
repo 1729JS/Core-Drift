@@ -55,8 +55,8 @@ const shopNpc = {
   y: world.height / 2,
   radius: 30,
 };
-const magnetRange = 230;
-const magnetSpeed = 780;
+const magnetRange = 150;
+const magnetSpeed = 360;
 const shopPrices = {
   knife: { buy: 50, sell: 25 },
   glock: { buy: 250, sell: 100 },
@@ -481,6 +481,8 @@ function gainXp(amount) {
   }
 
   updateXpHud();
+  updateLeaderboard();
+  sendNetwork("state", { state: getPlayerSnapshot() });
   updateUpgradePanel();
 }
 
@@ -570,7 +572,7 @@ function updateLeaderboard() {
     .sort((a, b) => b.score - a.score)
     .slice(0, 5);
 
-  leaderboard.innerHTML = `<div class="leaderboard-title">XP Ranking</div>${rows
+  leaderboard.innerHTML = `<div class="leaderboard-title">Ranking</div>${rows
     .map((row, index) => `<div class="leaderboard-row"><span>${index + 1}. ${escapeHtml(row.name)}</span><b>${Math.floor(row.score)}</b></div>`)
     .join("")}`;
 }
@@ -1928,7 +1930,11 @@ function update(delta) {
 
     const distanceToPickup = Math.hypot(pickup.x - player.x, pickup.y - player.y);
 
-    if (distanceToPickup <= magnetRange && distanceToPickup > pickup.radius + player.radius && canMagnetPickup(pickup)) {
+    if (distanceToPickup <= magnetRange && canMagnetPickup(pickup)) {
+      pickup.magnetized = true;
+    }
+
+    if (pickup.magnetized && distanceToPickup > pickup.radius + player.radius) {
       const pull = Math.min(distanceToPickup, magnetSpeed * delta);
       pickup.x += ((player.x - pickup.x) / distanceToPickup) * pull;
       pickup.y += ((player.y - pickup.y) / distanceToPickup) * pull;
