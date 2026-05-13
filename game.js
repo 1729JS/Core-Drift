@@ -1885,32 +1885,6 @@ function drawTreasureCrate(half, kind) {
   ctx.fill();
   ctx.fillRect(-2, 11, 4, 10);
 
-  if (!isGold) {
-    ctx.save();
-    ctx.translate(-half * 0.38, -half * 0.34);
-    ctx.fillStyle = "rgba(12, 16, 18, 0.9)";
-    ctx.strokeStyle = "#6df0d0";
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.roundRect(-15, -15, 30, 30, 7);
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = "#ffcf5f";
-    ctx.strokeStyle = "#8df4df";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(0, 0, 10, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = "rgba(255, 255, 255, 0.72)";
-    ctx.beginPath();
-    ctx.arc(-4, -5, 3, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-
   ctx.strokeStyle = isGold ? "rgba(255, 240, 168, 0.32)" : "rgba(238, 244, 246, 0.28)";
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -2071,18 +2045,22 @@ function drawPickups(time) {
       const isGoldXp = value >= goldCrateXpValue;
       const isMetalXp = value >= metalCrateXpValue && !isGoldXp;
       ctx.scale(pulse, pulse);
-      ctx.fillStyle = isGoldXp ? "#ffcf5f" : isMetalXp ? "#19b8c8" : "#1db9d8";
+      ctx.fillStyle = isGoldXp || isMetalXp ? "#ffcf5f" : "#1db9d8";
       ctx.strokeStyle = isGoldXp ? "#fff0a8" : "#8df4df";
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.arc(0, 0, isGoldXp ? 13 : isMetalXp ? 12 : 10, 0, Math.PI * 2);
+      ctx.arc(0, 0, isGoldXp ? 13 : isMetalXp ? 10 : 10, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
-      ctx.fillStyle = isGoldXp ? "rgba(255, 255, 255, 0.76)" : "rgba(221, 255, 229, 0.78)";
+      ctx.fillStyle = isGoldXp || isMetalXp ? "rgba(255, 255, 255, 0.76)" : "rgba(221, 255, 229, 0.78)";
       ctx.beginPath();
       ctx.arc(-4, -5, 3, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = isGoldXp ? "rgba(255, 240, 168, 0.5)" : "rgba(141, 244, 223, 0.38)";
+      ctx.fillStyle = isGoldXp
+        ? "rgba(255, 240, 168, 0.5)"
+        : isMetalXp
+          ? "rgba(141, 244, 223, 0.36)"
+          : "rgba(141, 244, 223, 0.38)";
       ctx.beginPath();
       ctx.arc(4, 3, 4, 0, Math.PI * 2);
       ctx.fill();
