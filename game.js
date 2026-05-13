@@ -180,6 +180,7 @@ let nextLocalBulletId = 1;
 const remotePlayers = new Map();
 const remoteBullets = [];
 const corpses = [];
+const teleportEffects = [];
 
 function getCrateCount(kind) {
   return crates.filter((crate) => (crate.kind || "basic") === kind).length;
@@ -400,6 +401,16 @@ function applyBulletKnockback(damage, vx, vy) {
   const force = clamp(110 + damage * 3.2, 150, 620);
   player.vx += (vx / length) * force;
   player.vy += (vy / length) * force;
+}
+
+function addTeleportEffect(x, y, color = "#8df4df") {
+  teleportEffects.push({
+    x,
+    y,
+    color,
+    startedAt: performance.now(),
+    duration: 420,
+  });
 }
 
 function getScaledDamage(baseDamage) {
@@ -874,6 +885,10 @@ function playEffect(effect) {
     playCrateBreakSound();
   } else if (effect.type === "playerHit") {
     playPlayerHitSound();
+  } else if (effect.type === "teleport") {
+    addTeleportEffect(effect.x, effect.y, effect.color || "#8df4df");
+    playTone({ frequency: 620, duration: 0.08, type: "triangle", gain: 0.045 });
+    playTone({ frequency: 920, duration: 0.12, type: "sine", gain: 0.035, when: 0.04 });
   }
 }
 
@@ -923,6 +938,33 @@ function connectMultiplayer() {
       pickups.splice(0, pickups.length, ...message.world.pickups);
     } else if (message.type === "effect") {
       playEffect(message.effect);
+    } else if (message.type === "teleport") {
+      const localBullet = bullets.find((bullet) => bullet.id === message.bulletId);
+      addTeleportEffect(player.x, player.y);
+      addTeleportEffect(message.x, message.y);
+      player.x = message.x;
+      player.y = message.y;
+      camera.x = player.x;
+      camera.y = player.y;
+      if (localBullet) {
+        localBullet.x = message.bulletX;
+        localBullet.y = message.bulletY;
+      }
+    } else if (message.type === "knifeSwap") {
+      const remoteBullet = remoteBullets.find((bullet) => bullet.id === message.bulletId && bullet.ownerId === message.id);
+      const remote = remotePlayers.get(message.id);
+      addTeleportEffect(message.playerX, message.playerY, "#ff9cb5");
+      addTeleportEffect(message.bulletX, message.bulletY, "#ff9cb5");
+      if (remote) {
+        remote.x = message.playerX;
+        remote.y = message.playerY;
+        remote.renderX = message.playerX;
+        remote.renderY = message.playerY;
+      }
+      if (remoteBullet) {
+        remoteBullet.x = message.bulletX;
+        remoteBullet.y = message.bulletY;
+      }
     } else if (message.type === "pickupGranted") {
       applyPickupItem(message.item);
     } else if (message.type === "xpGranted") {
@@ -980,6 +1022,31 @@ function sendNetwork(type, payload) {
   if (socket && socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify({ type, ...payload }));
   }
+}
+
+function swapWithThrownKnife() {
+  const knife = [...bullets].reverse().find((bullet) => bullet.weapon === "knife" && bullet.life > 0);
+
+  if (!knife) {
+    return false;
+  }
+
+  const previousPlayerX = player.x;
+  const previousPlayerY = player.y;
+  const previousKnifeX = knife.x;
+  const previousKnifeY = knife.y;
+
+  player.x = clamp(previousKnifeX, player.radius, world.width - player.radius);
+  player.y = clamp(previousKnifeY, player.radius, world.height - player.radius);
+  knife.x = previousPlayerX;
+  knife.y = previousPlayerY;
+  camera.x = player.x;
+  camera.y = player.y;
+  addTeleportEffect(previousPlayerX, previousPlayerY);
+  addTeleportEffect(player.x, player.y);
+  sendNetwork("knifeSwap", { bulletId: knife.id });
+  sendNetwork("state", { state: getPlayerSnapshot() });
+  return true;
 }
 
 function dropPickupAt(x, y, item) {
@@ -1403,7 +1470,7 @@ function update(delta) {
 
       if (circleHitsBox(bullet, crate) || segmentHitsBox(previousX, previousY, bullet.x, bullet.y, crate, bullet.radius)) {
         const hitPoint = getBoxHitPoint(bullet, crate);
-        const absorbed = bullet.weapon === "knife" ? bullet.damage : Math.min(bullet.damage, crate.hp);
+        const absorbed = Math.min(bullet.damage, crate.hp);
         hitCrate = true;
         bullet.hitCrateIds.push(crateKey);
 
@@ -1418,8 +1485,14 @@ function update(delta) {
 
         if (bullet.weapon === "knife") {
           knifeDropPoint = hitPoint;
-          bulletSpent = true;
-          break;
+          bullet.damage -= absorbed;
+
+          if (bullet.damage <= 0 || absorbed <= 0) {
+            bulletSpent = true;
+            break;
+          }
+
+          continue;
         }
 
         bullet.damage -= absorbed;
@@ -1447,8 +1520,13 @@ function update(delta) {
         if (bullet.weapon === "knife") {
           bullet.hitIds.push(remoteId);
           knifeDropPoint = { x: bullet.x, y: bullet.y };
-          bulletSpent = true;
-          break;
+          const absorbed = Math.min(bullet.damage, getRemoteDamageCapacity(remote));
+          bullet.damage -= absorbed;
+          bulletSpent = bullet.damage <= 0 || absorbed <= 0;
+          if (bulletSpent) {
+            break;
+          }
+          continue;
         }
 
         const absorbed = Math.min(bullet.damage, getRemoteDamageCapacity(remote));
@@ -1457,6 +1535,7 @@ function update(delta) {
 
         if (bullet.damage <= 0 || absorbed <= 0) {
           bulletSpent = true;
+          break;
         }
 
         break;
@@ -1465,7 +1544,7 @@ function update(delta) {
 
     const expired = bullet.life <= 0 || bullet.x < -80 || bullet.x > world.width + 80 || bullet.y < -80 || bullet.y > world.height + 80;
 
-    if (bullet.weapon === "knife" && (expired || (hitCrate && !sharedWorldActive))) {
+    if (bullet.weapon === "knife" && (expired || (bulletSpent && knifeDropPoint && !sharedWorldActive))) {
       dropPickupAt(knifeDropPoint?.x ?? bullet.x, knifeDropPoint?.y ?? bullet.y, bullet.pickup || { type: "knife", count: 1 });
     }
 
@@ -1498,11 +1577,6 @@ function update(delta) {
       bullet.hitCrateIds = bullet.hitCrateIds || [];
       bullet.hitCrateIds.push(crateKey);
 
-      if (bullet.weapon === "knife") {
-        bulletSpent = true;
-        break;
-      }
-
       const absorbed = Math.min(bullet.damage, Math.max(0, crate.hp));
       bullet.damage -= absorbed;
 
@@ -1529,13 +1603,19 @@ function update(delta) {
       }
 
       if (bullet.weapon === "knife") {
-        if (!sharedWorldActive) {
-          dropPickupAt(bullet.x, bullet.y, bullet.pickup || { type: "knife", count: 1 });
+        if (bullet.damage <= 0 || absorbed <= 0) {
+          if (!sharedWorldActive) {
+            dropPickupAt(bullet.x, bullet.y, bullet.pickup || { type: "knife", count: 1 });
+          }
+          bulletSpent = true;
         }
-        bulletSpent = true;
       } else if (bullet.damage <= 0 || absorbed <= 0) {
         bulletSpent = true;
       }
+    }
+
+    if (expired && bullet.weapon === "knife" && !sharedWorldActive) {
+          dropPickupAt(bullet.x, bullet.y, bullet.pickup || { type: "knife", count: 1 });
     }
 
     if (bulletSpent || expired) {
@@ -1604,10 +1684,6 @@ function update(delta) {
 
 function selectWeapon(slot) {
   if (slot < 1 || slot > 3) {
-    return;
-  }
-
-  if (!weapons.slots[slot]) {
     return;
   }
 
@@ -2368,6 +2444,42 @@ function drawFistWeapon(punchTimer, punchDuration, colors = {}) {
   ctx.restore();
 }
 
+function drawTeleportEffects() {
+  const now = performance.now();
+
+  for (let index = teleportEffects.length - 1; index >= 0; index -= 1) {
+    const effect = teleportEffects[index];
+    const progress = clamp((now - effect.startedAt) / effect.duration, 0, 1);
+
+    if (progress >= 1) {
+      teleportEffects.splice(index, 1);
+      continue;
+    }
+
+    const x = worldToScreenX(effect.x);
+    const y = worldToScreenY(effect.y);
+    const radius = 12 + progress * 42;
+    const alpha = 1 - progress;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = effect.color;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.lineWidth = 2;
+    for (let spoke = 0; spoke < 6; spoke += 1) {
+      const angle = spoke * (Math.PI / 3) + progress * Math.PI;
+      ctx.beginPath();
+      ctx.moveTo(x + Math.cos(angle) * 8, y + Math.sin(angle) * 8);
+      ctx.lineTo(x + Math.cos(angle) * radius, y + Math.sin(angle) * radius);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
 function drawPlayer(time) {
   const x = worldToScreenX(player.x);
   const y = worldToScreenY(player.y);
@@ -2573,6 +2685,7 @@ function draw(time) {
   drawRemoteBullets();
   drawCorpses(time);
   drawRemotePlayers(time);
+  drawTeleportEffects();
   if (!deathPending) {
     drawPlayer(time);
   }
@@ -2635,6 +2748,11 @@ window.addEventListener("keydown", (event) => {
   }
 
   if (event.key.toLowerCase() === "f") {
+    swapWithThrownKnife();
+    return;
+  }
+
+  if (event.key.toLowerCase() === "t") {
     dropSelectedWeapon();
     return;
   }

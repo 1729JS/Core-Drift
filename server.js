@@ -356,15 +356,23 @@ function updateBullets(delta) {
 
       if (bullet.weapon === "knife") {
         const hitPoint = getBoxHitPoint(bullet, crate);
-        damageCrate(crate, bullet.damage);
-        const dropId = bullet.pickup?.dropId || bullet.id;
-        if (!handledDropIds.has(dropId)) {
-          handledDropIds.add(dropId);
-          spawnPickup(hitPoint.x, hitPoint.y, "knife", { count: 1 });
-          worldChanged = true;
+        const absorbed = Math.min(bullet.damage, Math.max(0, crate.hp));
+        damageCrate(crate, absorbed);
+        bullet.damage -= absorbed;
+        worldChanged = true;
+
+        if (bullet.damage <= 0 || absorbed <= 0) {
+          const dropId = bullet.pickup?.dropId || bullet.id;
+          if (!handledDropIds.has(dropId)) {
+            handledDropIds.add(dropId);
+            spawnPickup(hitPoint.x, hitPoint.y, "knife", { count: 1 });
+            worldChanged = true;
+          }
+          spent = true;
+          break;
         }
-        spent = true;
-        break;
+
+        continue;
       }
 
       const absorbed = Math.min(bullet.damage, Math.max(0, crate.hp));
@@ -392,15 +400,24 @@ function updateBullets(delta) {
         bullet.hitIds.add(targetId);
 
         if (bullet.weapon === "knife") {
-          damageClient(targetId, bullet.damage, bullet.ownerId, getKnockback(bullet.damage, bullet.vx, bullet.vy));
-          const dropId = bullet.pickup?.dropId || bullet.id;
-          if (!handledDropIds.has(dropId)) {
-            handledDropIds.add(dropId);
-            spawnPickup(bullet.x, bullet.y, "knife", { count: 1 });
-            worldChanged = true;
+          const absorbed = Math.min(bullet.damage, getDamageCapacity(client.state));
+          if (absorbed > 0) {
+            damageClient(targetId, absorbed, bullet.ownerId, getKnockback(absorbed, bullet.vx, bullet.vy));
+            bullet.damage -= absorbed;
           }
-          spent = true;
-          break;
+
+          if (bullet.damage <= 0 || absorbed <= 0) {
+            const dropId = bullet.pickup?.dropId || bullet.id;
+            if (!handledDropIds.has(dropId)) {
+              handledDropIds.add(dropId);
+              spawnPickup(bullet.x, bullet.y, "knife", { count: 1 });
+              worldChanged = true;
+            }
+            spent = true;
+            break;
+          }
+
+          continue;
         }
 
         const absorbed = Math.min(bullet.damage, getDamageCapacity(client.state));
@@ -611,6 +628,44 @@ server.on("upgrade", (request, socket) => {
           hitIds: new Set(),
         });
         broadcast({ type: "shot", id, bullet: message.bullet }, id);
+      } else if (message.type === "knifeSwap") {
+        const client = clients.get(id);
+        const bullet = bullets.find((candidate) => candidate.id === message.bulletId && candidate.ownerId === id && candidate.weapon === "knife");
+
+        if (client?.state && bullet) {
+          const previousPlayerX = client.state.x;
+          const previousPlayerY = client.state.y;
+          const nextPlayerX = clamp(bullet.x, 24, world.width - 24);
+          const nextPlayerY = clamp(bullet.y, 24, world.height - 24);
+
+          bullet.x = previousPlayerX;
+          bullet.y = previousPlayerY;
+          client.state = { ...client.state, x: nextPlayerX, y: nextPlayerY };
+
+          send(socket, {
+            type: "teleport",
+            x: nextPlayerX,
+            y: nextPlayerY,
+            bulletId: bullet.id,
+            bulletX: bullet.x,
+            bulletY: bullet.y,
+          });
+          broadcast({ type: "state", id, state: client.state }, id);
+          broadcast(
+            {
+              type: "knifeSwap",
+              id,
+              bulletId: bullet.id,
+              playerX: nextPlayerX,
+              playerY: nextPlayerY,
+              bulletX: bullet.x,
+              bulletY: bullet.y,
+            },
+            id,
+          );
+          broadcastEffect({ type: "teleport", x: nextPlayerX, y: nextPlayerY });
+          broadcastEffect({ type: "teleport", x: bullet.x, y: bullet.y });
+        }
       } else if (message.type === "melee") {
         handleMelee(id, message.attack);
         broadcast({ type: "melee", id, attack: message.attack }, id);
