@@ -6,9 +6,15 @@ const crypto = require("crypto");
 const root = __dirname;
 const port = Number(process.env.PORT || 3000);
 const clients = new Map();
-const world = { width: 4400, height: 4400 };
-const maxCrates = 20;
+const world = { width: 8800, height: 8800 };
+const maxCrates = 40;
+const maxMetalCrates = 20;
 const crateRespawnMs = 5000;
+const basicCrateHealth = 150;
+const metalCrateHealth = Math.round(basicCrateHealth * 1.5);
+const xpDropValue = 38;
+const metalCrateXpValue = 125;
+const pickupLifetimeMs = 5 * 60 * 1000;
 const crates = [];
 const pickups = [];
 const bullets = [];
@@ -85,9 +91,14 @@ function getBoxHitPoint(circle, box) {
   };
 }
 
-function spawnCrate() {
+function getCrateCount(kind) {
+  return crates.filter((crate) => (crate.kind || "basic") === kind).length;
+}
+
+function spawnCrate(kind = "basic") {
   for (let attempt = 0; attempt < 80; attempt += 1) {
-    const size = 46 + Math.random() * 18;
+    const isMetal = kind === "metal";
+    const size = isMetal ? 58 + Math.random() * 18 : 46 + Math.random() * 18;
     const x = size + Math.random() * (world.width - size * 2);
     const y = size + Math.random() * (world.height - size * 2);
 
@@ -96,9 +107,10 @@ function spawnCrate() {
       x,
       y,
       size,
+      kind,
       rotation: Math.random() * Math.PI * 2,
-      hp: 150,
-      maxHp: 150,
+      hp: isMetal ? metalCrateHealth : basicCrateHealth,
+      maxHp: isMetal ? metalCrateHealth : basicCrateHealth,
     });
     return;
   }
@@ -117,17 +129,36 @@ function spawnPickup(x, y, forcedType = null, data = {}) {
     ammo: data.ammo,
     magAmmo: data.magAmmo,
     value: data.value,
+    expiresAt: Date.now() + pickupLifetimeMs,
     radius: 18,
     bob: Math.random() * Math.PI * 2,
   });
+}
+
+function cleanupExpiredPickups() {
+  const now = Date.now();
+  let changed = false;
+
+  for (let index = pickups.length - 1; index >= 0; index -= 1) {
+    if (pickups[index].expiresAt && pickups[index].expiresAt <= now) {
+      pickups.splice(index, 1);
+      changed = true;
+    }
+  }
+
+  return changed;
 }
 
 function createCrates() {
   crates.length = 0;
   pickups.length = 0;
 
-  while (crates.length < maxCrates) {
-    spawnCrate();
+  while (getCrateCount("basic") < maxCrates) {
+    spawnCrate("basic");
+  }
+
+  while (getCrateCount("metal") < maxMetalCrates) {
+    spawnCrate("metal");
   }
 }
 
@@ -250,8 +281,12 @@ function damageCrate(crate, amount) {
   crate.hp -= amount;
 
   if (crate.hp <= 0) {
-    spawnPickup(crate.x, crate.y);
-    spawnPickup(crate.x + 26, crate.y - 18, "xp", { value: 38 });
+    if ((crate.kind || "basic") === "metal") {
+      spawnPickup(crate.x, crate.y, "xp", { value: metalCrateXpValue });
+    } else {
+      spawnPickup(crate.x, crate.y);
+      spawnPickup(crate.x + 26, crate.y - 18, "xp", { value: xpDropValue });
+    }
     crates.splice(crates.indexOf(crate), 1);
   }
 
@@ -600,6 +635,12 @@ server.on("upgrade", (request, socket) => {
         const client = clients.get(id);
         const pickup = pickups.find((candidate) => candidate.id === message.id);
         if (client?.state && pickup && Math.hypot(client.state.x - pickup.x, client.state.y - pickup.y) <= 72) {
+          if (pickup.expiresAt && pickup.expiresAt <= Date.now()) {
+            pickups.splice(pickups.indexOf(pickup), 1);
+            broadcastWorld();
+            continue;
+          }
+
           if (pickup.type === "armor" && (client.state.shield || 0) >= (client.state.maxShield || 125)) {
             continue;
           }
@@ -621,7 +662,7 @@ server.on("upgrade", (request, socket) => {
             };
             send(socket, { type: "health", health: client.state.health, shield: client.state.shield || 0 });
           } else if (pickup.type === "xp") {
-            send(socket, { type: "xpGranted", value: pickup.value || 38 });
+            send(socket, { type: "xpGranted", value: pickup.value || xpDropValue });
           } else {
             send(socket, { type: "pickupGranted", item: pickup });
           }
@@ -661,11 +702,22 @@ server.listen(port, "0.0.0.0", () => {
 });
 
 setInterval(() => {
-  if (crates.length < maxCrates) {
-    spawnCrate();
+  if (getCrateCount("basic") < maxCrates) {
+    spawnCrate("basic");
+    broadcastWorld();
+  }
+
+  if (getCrateCount("metal") < maxMetalCrates) {
+    spawnCrate("metal");
     broadcastWorld();
   }
 }, crateRespawnMs);
+
+setInterval(() => {
+  if (cleanupExpiredPickups()) {
+    broadcastWorld();
+  }
+}, 1000);
 
 setInterval(() => {
   const now = Date.now();

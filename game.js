@@ -22,13 +22,15 @@ const slot3Empty = document.querySelector("#slot3Empty");
 const slot3Name = document.querySelector("#slot3Name");
 
 const world = {
-  width: 4400,
-  height: 4400,
+  width: 8800,
+  height: 8800,
 };
 
-const maxCrates = 20;
+const maxCrates = 40;
+const maxMetalCrates = 20;
 const crateRespawnSeconds = 5;
 const corpseLifetime = 500;
+const pickupLifetimeMs = 5 * 60 * 1000;
 
 const baseStats = {
   maxSpeed: 480,
@@ -40,6 +42,9 @@ const baseStats = {
 };
 
 const xpDropValue = 38;
+const metalCrateXpValue = 125;
+const basicCrateHealth = 150;
+const metalCrateHealth = Math.round(basicCrateHealth * 1.5);
 const upgradeSteps = {
   speed: { maxSpeed: 35, acceleration: 90 },
   dash: { dashSpeed: 90 },
@@ -173,9 +178,14 @@ const remotePlayers = new Map();
 const remoteBullets = [];
 const corpses = [];
 
-function spawnCrate() {
+function getCrateCount(kind) {
+  return crates.filter((crate) => (crate.kind || "basic") === kind).length;
+}
+
+function spawnCrate(kind = "basic") {
   for (let attempt = 0; attempt < 80; attempt += 1) {
-    const size = 46 + Math.random() * 18;
+    const isMetal = kind === "metal";
+    const size = isMetal ? 58 + Math.random() * 18 : 46 + Math.random() * 18;
     const x = size + Math.random() * (world.width - size * 2);
     const y = size + Math.random() * (world.height - size * 2);
     const distanceFromPlayer = Math.hypot(x - player.x, y - player.y);
@@ -188,9 +198,10 @@ function spawnCrate() {
       x,
       y,
       size,
+      kind,
       rotation: Math.random() * Math.PI * 2,
-      hp: 150,
-      maxHp: 150,
+      hp: isMetal ? metalCrateHealth : basicCrateHealth,
+      maxHp: isMetal ? metalCrateHealth : basicCrateHealth,
     });
     return true;
   }
@@ -201,8 +212,12 @@ function spawnCrate() {
 function createCrates() {
   crates.length = 0;
 
-  while (crates.length < maxCrates) {
-    spawnCrate();
+  while (getCrateCount("basic") < maxCrates) {
+    spawnCrate("basic");
+  }
+
+  while (getCrateCount("metal") < maxMetalCrates) {
+    spawnCrate("metal");
   }
 }
 
@@ -474,8 +489,12 @@ function damageCrate(index, damage) {
   crate.hp -= damage;
 
   if (crate.hp <= 0) {
-    spawnPickup(crate.x, crate.y);
-    spawnPickup(crate.x + 26, crate.y - 18, "xp", { value: xpDropValue });
+    if ((crate.kind || "basic") === "metal") {
+      spawnPickup(crate.x, crate.y, "xp", { value: metalCrateXpValue });
+    } else {
+      spawnPickup(crate.x, crate.y);
+      spawnPickup(crate.x + 26, crate.y - 18, "xp", { value: xpDropValue });
+    }
     crates.splice(index, 1);
     playCrateBreakSound();
     return true;
@@ -499,6 +518,7 @@ function spawnPickup(x, y, forcedType = null, data = {}) {
     ammo: data.ammo,
     magAmmo: data.magAmmo,
     value: data.value,
+    expiresAt: data.expiresAt || Date.now() + pickupLifetimeMs,
     radius: 18,
     bob: Math.random() * Math.PI * 2,
   });
@@ -667,6 +687,11 @@ function addWeaponToInventory(item) {
 
 function collectPickup(index) {
   const pickup = pickups[index];
+
+  if (pickup.expiresAt && pickup.expiresAt <= Date.now()) {
+    pickups.splice(index, 1);
+    return;
+  }
 
   if (!canCollectPickup(pickup)) {
     return;
@@ -950,6 +975,7 @@ function dropPickupAt(x, y, item) {
     ...item,
     x: clamp(x, player.radius, world.width - player.radius),
     y: clamp(y, player.radius, world.height - player.radius),
+    expiresAt: Date.now() + pickupLifetimeMs,
   };
 
   if (sharedWorldActive && socket?.readyState === WebSocket.OPEN) {
@@ -1508,6 +1534,11 @@ function update(delta) {
   for (let index = pickups.length - 1; index >= 0; index -= 1) {
     const pickup = pickups[index];
 
+    if (pickup.expiresAt && pickup.expiresAt <= Date.now()) {
+      pickups.splice(index, 1);
+      continue;
+    }
+
     if (Math.hypot(pickup.x - player.x, pickup.y - player.y) <= pickup.radius + player.radius) {
       collectPickup(index);
     }
@@ -1516,8 +1547,12 @@ function update(delta) {
   crateRegenTimer -= delta;
 
   if (!sharedWorldActive && crateRegenTimer <= 0) {
-    if (crates.length < maxCrates) {
-      spawnCrate();
+    if (getCrateCount("basic") < maxCrates) {
+      spawnCrate("basic");
+    }
+
+    if (getCrateCount("metal") < maxMetalCrates) {
+      spawnCrate("metal");
     }
 
     crateRegenTimer = crateRespawnSeconds;
@@ -1777,20 +1812,59 @@ function drawCrates() {
     ctx.translate(x, y);
     ctx.rotate(crate.rotation);
 
-    ctx.fillStyle = "#b77a3d";
-    ctx.strokeStyle = "#5b3725";
-    ctx.lineWidth = 4;
-    ctx.fillRect(-half, -half, crate.size, crate.size);
-    ctx.strokeRect(-half, -half, crate.size, crate.size);
+    if ((crate.kind || "basic") === "metal") {
+      const gradient = ctx.createLinearGradient(-half, -half, half, half);
+      gradient.addColorStop(0, "#d4dae0");
+      gradient.addColorStop(0.35, "#6d7881");
+      gradient.addColorStop(0.7, "#2d353c");
+      gradient.addColorStop(1, "#aeb7bf");
+      ctx.fillStyle = gradient;
+      ctx.strokeStyle = "#12181d";
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.roundRect(-half, -half, crate.size, crate.size, 7);
+      ctx.fill();
+      ctx.stroke();
 
-    ctx.strokeStyle = "rgba(255, 223, 134, 0.76)";
-    ctx.lineWidth = 5;
-    ctx.beginPath();
-    ctx.moveTo(-half + 8, -half + 8);
-    ctx.lineTo(half - 8, half - 8);
-    ctx.moveTo(half - 8, -half + 8);
-    ctx.lineTo(-half + 8, half - 8);
-    ctx.stroke();
+      ctx.strokeStyle = "rgba(246, 242, 233, 0.28)";
+      ctx.lineWidth = 2;
+      for (let offset = -half + 12; offset < half; offset += 13) {
+        ctx.beginPath();
+        ctx.moveTo(offset, -half + 6);
+        ctx.lineTo(offset + 18, half - 6);
+        ctx.stroke();
+      }
+
+      ctx.rotate(-crate.rotation);
+      ctx.fillStyle = "rgba(255, 207, 95, 0.16)";
+      ctx.strokeStyle = "rgba(255, 207, 95, 0.72)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(-24, -10, 48, 20, 6);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "#ffcf5f";
+      ctx.font = "900 11px Inter, system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("XP 125", 0, 0);
+      ctx.rotate(crate.rotation);
+    } else {
+      ctx.fillStyle = "#b77a3d";
+      ctx.strokeStyle = "#5b3725";
+      ctx.lineWidth = 4;
+      ctx.fillRect(-half, -half, crate.size, crate.size);
+      ctx.strokeRect(-half, -half, crate.size, crate.size);
+
+      ctx.strokeStyle = "rgba(255, 223, 134, 0.76)";
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(-half + 8, -half + 8);
+      ctx.lineTo(half - 8, half - 8);
+      ctx.moveTo(half - 8, -half + 8);
+      ctx.lineTo(-half + 8, half - 8);
+      ctx.stroke();
+    }
 
     const hpRatio = clamp(crate.hp / crate.maxHp, 0, 1);
     ctx.rotate(-crate.rotation);
@@ -1904,19 +1978,27 @@ function drawPickups(time) {
       ctx.fillRect(-4, -10, 8, 20);
       ctx.fillRect(-10, -4, 20, 8);
     } else if (pickup.type === "xp") {
+      const value = pickup.value || xpDropValue;
       const pulse = 1 + Math.sin(time * 0.01 + pickup.bob) * 0.08;
       ctx.scale(pulse, pulse);
-      ctx.fillStyle = "#ffcf5f";
-      ctx.strokeStyle = "#8df4df";
+      ctx.fillStyle = value >= metalCrateXpValue ? "#8df4df" : "#ffcf5f";
+      ctx.strokeStyle = value >= metalCrateXpValue ? "#f6f2e9" : "#8df4df";
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.arc(0, 0, 10, 0, Math.PI * 2);
+      ctx.arc(0, 0, value >= metalCrateXpValue ? 13 : 10, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
       ctx.fillStyle = "rgba(255, 255, 255, 0.72)";
       ctx.beginPath();
       ctx.arc(-3, -4, 3, 0, Math.PI * 2);
       ctx.fill();
+      if (value >= metalCrateXpValue) {
+        ctx.fillStyle = "#101214";
+        ctx.font = "900 9px Inter, system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("XP", 0, 1);
+      }
     }
 
     ctx.restore();
