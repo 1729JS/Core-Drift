@@ -392,6 +392,8 @@ body {
 .shop-list {
   display: grid;
   gap: 8px;
+  max-height: min(520px, calc(100vh - 210px));
+  overflow: auto;
 }
 
 .shop-row {
@@ -404,6 +406,14 @@ body {
 .shop-row span {
   flex: 1;
   font-weight: 900;
+}
+
+.shop-section {
+  margin-top: 8px;
+  color: #8df4df;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
 }
 
 .shop-row button {

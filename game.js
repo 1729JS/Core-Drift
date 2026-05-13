@@ -62,6 +62,14 @@ const shopPrices = {
   glock: { buy: 250, sell: 100 },
   awm: { buy: 700, sell: 300 },
 };
+const shopUpgradePrices = {
+  knife: { range: 120, damage: 140, mag: 90 },
+  glock: { range: 180, damage: 240, mag: 220 },
+  awm: { range: 280, damage: 360, mag: 320 },
+};
+const shopAbilityPrices = {
+  heal: 180,
+};
 
 const baseStats = {
   maxSpeed: 480,
@@ -87,7 +95,6 @@ const upgradeSteps = {
   speed: { maxSpeed: 35, acceleration: 90 },
   dash: { dashSpeed: 90 },
   health: { maxHealth: 25 },
-  heal: { healAmount: 15 },
   damage: { damageMultiplier: 0.1 },
 };
 
@@ -147,9 +154,11 @@ const weapons = {
     damage: 25,
     fireRate: 0.42,
     range: 82,
+    throwLifeBonus: 0,
     arc: Math.PI * 0.72,
     swingDuration: 0.18,
     count: 1,
+    upgrades: { range: 0, damage: 0, mag: 0 },
   },
   fist: {
     damage: 10,
@@ -169,6 +178,7 @@ const weapons = {
     magazineSize: 17,
     reloadTime: 3,
     reloadTimer: 0,
+    upgrades: { range: 0, damage: 0, mag: 0 },
   },
   awm: {
     damage: 100,
@@ -181,6 +191,7 @@ const weapons = {
     magazineSize: 6,
     reloadTime: 5,
     reloadTimer: 0,
+    upgrades: { range: 0, damage: 0, mag: 0 },
   },
 };
 
@@ -323,12 +334,24 @@ function resetGameState() {
   weapons.slots[2] = null;
   weapons.slots[3] = null;
   weapons.knife.count = 1;
+  weapons.knife.damage = 25;
+  weapons.knife.range = 82;
+  weapons.knife.throwLifeBonus = 0;
+  weapons.knife.upgrades = { range: 0, damage: 0, mag: 0 };
+  weapons.glock.damage = 50;
+  weapons.glock.bulletLife = 1.2;
+  weapons.glock.magazineSize = 17;
   weapons.glock.ammo = 0;
   weapons.glock.magAmmo = 0;
   weapons.glock.reloadTimer = 0;
+  weapons.glock.upgrades = { range: 0, damage: 0, mag: 0 };
+  weapons.awm.damage = 100;
+  weapons.awm.bulletLife = 4;
+  weapons.awm.magazineSize = 6;
   weapons.awm.ammo = 0;
   weapons.awm.magAmmo = 0;
   weapons.awm.reloadTimer = 0;
+  weapons.awm.upgrades = { range: 0, damage: 0, mag: 0 };
 
   crateRegenTimer = crateRespawnSeconds;
   if (!sharedWorldActive) {
@@ -512,10 +535,6 @@ function applyUpgrade(type) {
     player.health = Math.min(player.maxHealth, player.health + step.maxHealth);
   }
 
-  if (step.healAmount) {
-    player.healAmount += step.healAmount;
-  }
-
   if (step.damageMultiplier) {
     player.damageMultiplier = Number((player.damageMultiplier + step.damageMultiplier).toFixed(2));
   }
@@ -545,6 +564,21 @@ function updateShopHud() {
   if (shopCoins) {
     shopCoins.textContent = `Coins ${player.coins}`;
   }
+
+  shopPanel?.querySelectorAll("button[data-action='upgrade']").forEach((button) => {
+    const item = button.dataset.item;
+    const stat = button.dataset.stat;
+    const level = weapons[item]?.upgrades?.[stat] || 0;
+    const price = getUpgradePrice(item, stat);
+    button.textContent = `Lv ${level} | Buy ${price}`;
+  });
+
+  shopPanel?.querySelectorAll("button[data-action='ability']").forEach((button) => {
+    const ability = button.dataset.ability;
+    const level = player.upgrades[ability] || 0;
+    const price = getAbilityPrice(ability);
+    button.textContent = `Lv ${level} | Buy ${price}`;
+  });
 }
 
 function escapeHtml(value) {
@@ -644,6 +678,18 @@ function setShopMessage(text) {
   }
 }
 
+function getUpgradePrice(item, stat) {
+  const base = shopUpgradePrices[item]?.[stat] || 9999;
+  const level = weapons[item]?.upgrades?.[stat] || 0;
+  return Math.round(base * (1 + level * 0.65));
+}
+
+function getAbilityPrice(ability) {
+  const base = shopAbilityPrices[ability] || 9999;
+  const level = player.upgrades[ability] || 0;
+  return Math.round(base * (1 + level * 0.7));
+}
+
 function buyShopItem(item) {
   const price = shopPrices[item]?.buy;
 
@@ -667,6 +713,60 @@ function buyShopItem(item) {
   updateCoinHud();
   updateShopHud();
   setShopMessage(`${getWeaponDisplay(item).label} 구매 완료`);
+}
+
+function buyWeaponUpgrade(item, stat) {
+  const price = getUpgradePrice(item, stat);
+
+  if (!weapons[item]?.upgrades || player.coins < price) {
+    setShopMessage("코인이 부족합니다.");
+    return;
+  }
+
+  player.coins -= price;
+  weapons[item].upgrades[stat] += 1;
+
+  if (stat === "range") {
+    if (item === "knife") {
+      weapons.knife.range += 8;
+      weapons.knife.throwLifeBonus += 0.08;
+    } else {
+      weapons[item].bulletLife += item === "awm" ? 0.35 : 0.18;
+    }
+  } else if (stat === "damage") {
+    weapons[item].damage += item === "awm" ? 15 : item === "glock" ? 8 : 5;
+  } else if (stat === "mag") {
+    if (item === "knife") {
+      weapons.knife.count += 1;
+    } else {
+      const increase = item === "awm" ? 1 : 3;
+      weapons[item].magazineSize += increase;
+      weapons[item].ammo += increase;
+    }
+  }
+
+  updateInventory();
+  updateCoinHud();
+  updateShopHud();
+  setShopMessage(`${getWeaponDisplay(item).label} ${stat} 업그레이드 완료`);
+}
+
+function buyAbilityUpgrade(ability) {
+  const price = getAbilityPrice(ability);
+
+  if (player.coins < price) {
+    setShopMessage("코인이 부족합니다.");
+    return;
+  }
+
+  if (ability === "heal") {
+    player.coins -= price;
+    player.upgrades.heal += 1;
+    player.healAmount += 15;
+    updateCoinHud();
+    updateShopHud();
+    setShopMessage("Heal Power 업그레이드 완료");
+  }
 }
 
 function sellShopItem(item) {
@@ -968,7 +1068,7 @@ function collectPickup(index) {
   }
 
   if (sharedWorldActive && pickup?.id) {
-    sendNetwork("pickupRequest", { id: pickup.id });
+    sendNetwork("pickupRequest", { id: pickup.id, x: pickup.x, y: pickup.y });
     return;
   }
 
@@ -1159,8 +1259,12 @@ shopPanel?.addEventListener("click", (event) => {
 
   if (button.dataset.action === "buy") {
     buyShopItem(button.dataset.item);
-  } else {
+  } else if (button.dataset.action === "sell") {
     sellShopItem(button.dataset.item);
+  } else if (button.dataset.action === "upgrade") {
+    buyWeaponUpgrade(button.dataset.item, button.dataset.stat);
+  } else if (button.dataset.action === "ability") {
+    buyAbilityUpgrade(button.dataset.ability);
   }
 });
 
@@ -1179,7 +1283,7 @@ function connectMultiplayer() {
       if (message.world) {
         sharedWorldActive = true;
         crates.splice(0, crates.length, ...message.world.crates);
-        pickups.splice(0, pickups.length, ...message.world.pickups);
+        syncWorldPickups(message.world.pickups);
       }
       if (gameStarted) {
         sendNetwork("respawn", { state: getPlayerSnapshot() });
@@ -1207,7 +1311,7 @@ function connectMultiplayer() {
     } else if (message.type === "world") {
       sharedWorldActive = true;
       crates.splice(0, crates.length, ...message.world.crates);
-      pickups.splice(0, pickups.length, ...message.world.pickups);
+      syncWorldPickups(message.world.pickups);
     } else if (message.type === "effect") {
       playEffect(message.effect);
     } else if (message.type === "teleport") {
@@ -1292,6 +1396,24 @@ function sendNetwork(type, payload) {
   if (socket && socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify({ type, ...payload }));
   }
+}
+
+function syncWorldPickups(nextPickups) {
+  const previous = new Map(pickups.filter((pickup) => pickup.id).map((pickup) => [pickup.id, pickup]));
+
+  pickups.splice(
+    0,
+    pickups.length,
+    ...nextPickups.map((pickup) => {
+      const old = previous.get(pickup.id);
+
+      if (old?.magnetized) {
+        return { ...pickup, x: old.x, y: old.y, magnetized: true };
+      }
+
+      return pickup;
+    }),
+  );
 }
 
 function swapWithThrownKnife() {
@@ -1594,7 +1716,7 @@ function throwKnife() {
     vx: Math.cos(angle) * speed + player.vx * 0.12,
     vy: Math.sin(angle) * speed + player.vy * 0.12,
     radius: 10,
-    life: 0.28 + chargeRatio * 0.46,
+    life: 0.28 + chargeRatio * 0.46 + weapons.knife.throwLifeBonus,
     damage,
     angle,
     weapon: "knife",

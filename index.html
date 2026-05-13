@@ -68,10 +68,6 @@
         <span>Max Health</span>
         <b data-base="+25">+25</b>
       </button>
-      <button class="upgrade-choice" data-upgrade="heal" type="button">
-        <span>Heal Power</span>
-        <b data-base="+15">+15</b>
-      </button>
       <button class="upgrade-choice" data-upgrade="damage" type="button">
         <span>Damage</span>
         <b data-base="+10%">+10%</b>
@@ -99,6 +95,47 @@
           <span>AWM</span>
           <button data-action="buy" data-item="awm" type="button">Buy 700</button>
           <button data-action="sell" data-item="awm" type="button">Sell 300</button>
+        </div>
+        <div class="shop-section">Upgrades</div>
+        <div class="shop-row">
+          <span>Knife Range</span>
+          <button data-action="upgrade" data-item="knife" data-stat="range" type="button"></button>
+        </div>
+        <div class="shop-row">
+          <span>Knife Damage</span>
+          <button data-action="upgrade" data-item="knife" data-stat="damage" type="button"></button>
+        </div>
+        <div class="shop-row">
+          <span>Knife Stock</span>
+          <button data-action="upgrade" data-item="knife" data-stat="mag" type="button"></button>
+        </div>
+        <div class="shop-row">
+          <span>Glock Range</span>
+          <button data-action="upgrade" data-item="glock" data-stat="range" type="button"></button>
+        </div>
+        <div class="shop-row">
+          <span>Glock Damage</span>
+          <button data-action="upgrade" data-item="glock" data-stat="damage" type="button"></button>
+        </div>
+        <div class="shop-row">
+          <span>Glock Mag</span>
+          <button data-action="upgrade" data-item="glock" data-stat="mag" type="button"></button>
+        </div>
+        <div class="shop-row">
+          <span>AWM Range</span>
+          <button data-action="upgrade" data-item="awm" data-stat="range" type="button"></button>
+        </div>
+        <div class="shop-row">
+          <span>AWM Damage</span>
+          <button data-action="upgrade" data-item="awm" data-stat="damage" type="button"></button>
+        </div>
+        <div class="shop-row">
+          <span>AWM Mag</span>
+          <button data-action="upgrade" data-item="awm" data-stat="mag" type="button"></button>
+        </div>
+        <div class="shop-row">
+          <span>Heal Power</span>
+          <button data-action="ability" data-ability="heal" type="button"></button>
         </div>
       </div>
       <div class="shop-message" id="shopMessage">K near the vendor to trade.</div>

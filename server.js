@@ -710,7 +710,9 @@ server.on("upgrade", (request, socket) => {
       } else if (message.type === "pickupRequest") {
         const client = clients.get(id);
         const pickup = pickups.find((candidate) => candidate.id === message.id);
-        if (client?.state && pickup && Math.hypot(client.state.x - pickup.x, client.state.y - pickup.y) <= 230) {
+        const requestX = Number.isFinite(Number(message.x)) ? Number(message.x) : pickup?.x;
+        const requestY = Number.isFinite(Number(message.y)) ? Number(message.y) : pickup?.y;
+        if (client?.state && pickup && Math.hypot(client.state.x - requestX, client.state.y - requestY) <= 72) {
           if (pickup.expiresAt && pickup.expiresAt <= Date.now()) {
             pickups.splice(pickups.indexOf(pickup), 1);
             broadcastWorld();
