@@ -11,6 +11,7 @@ const xpStatus = document.querySelector("#xpStatus");
 const xpBarFill = document.querySelector("#xpBarFill");
 const coinStatus = document.querySelector("#coinStatus");
 const upgradePanel = document.querySelector("#upgradePanel");
+const upgradePointsLabel = document.querySelector("#upgradePointsLabel");
 const upgradeButtons = document.querySelectorAll(".upgrade-choice");
 const knifeSwapSkill = document.querySelector("#knifeSwapSkill");
 const knifeSwapCooldown = document.querySelector("#knifeSwapCooldown");
@@ -36,6 +37,19 @@ const crateRespawnSeconds = 5;
 const corpseLifetime = 500;
 const pickupLifetimeMs = 5 * 60 * 1000;
 const knifeSwapCooldownSeconds = 5;
+const shopDepth = 920;
+const doorHeight = 500;
+const shopDoor = {
+  x: 0,
+  y: world.height / 2,
+  width: 38,
+  height: doorHeight,
+};
+const shopNpc = {
+  x: -560,
+  y: world.height / 2,
+  radius: 30,
+};
 
 const baseStats = {
   maxSpeed: 480,
@@ -187,6 +201,7 @@ let localClientId = null;
 let lastNetworkSend = 0;
 let sharedWorldActive = false;
 let nextLocalBulletId = 1;
+let shopToastTimer = 0;
 
 const remotePlayers = new Map();
 const remoteBullets = [];
@@ -516,9 +531,55 @@ function updateSkillHud() {
   knifeSwapCooldown.textContent = ready ? "" : Math.ceil(player.knifeSwapTimer);
 }
 
+function isNearShopDoor() {
+  return Math.abs(player.x - shopDoor.x) <= 90 && Math.abs(player.y - shopDoor.y) <= shopDoor.height / 2 + 60;
+}
+
+function isNearShopNpc() {
+  return Math.hypot(player.x - shopNpc.x, player.y - shopNpc.y) <= shopNpc.radius + player.radius + 34;
+}
+
+function interact() {
+  if (isNearShopNpc()) {
+    shopToastTimer = 2.2;
+    return;
+  }
+
+  if (!isNearShopDoor()) {
+    return;
+  }
+
+  addTeleportEffect(player.x, player.y, "#ff6f8f");
+
+  if (player.x >= 0) {
+    player.x = -170;
+  } else {
+    player.x = 80;
+  }
+
+  player.y = shopDoor.y;
+  player.vx = 0;
+  player.vy = 0;
+  addTeleportEffect(player.x, player.y, "#ff6f8f");
+  sendNetwork("state", { state: getPlayerSnapshot() });
+}
+
 function updateUpgradePanel() {
   if (!upgradePanel) {
     return;
+  }
+
+  if (upgradePointsLabel) {
+    upgradePointsLabel.textContent = `Points ${player.upgradePoints}`;
+  }
+
+  for (const button of upgradeButtons) {
+    const type = button.dataset.upgrade;
+    const value = button.querySelector("b");
+
+    if (value) {
+      value.textContent = `${value.dataset.base} | Lv ${player.upgrades[type] || 0}`;
+    }
   }
 
   upgradePanel.classList.toggle("hidden", !gameStarted || player.upgradePoints <= 0);
@@ -1438,6 +1499,7 @@ function update(delta) {
   }
 
   player.dashActiveTimer = Math.max(0, player.dashActiveTimer - delta);
+  shopToastTimer = Math.max(0, shopToastTimer - delta);
 
   if (player.dashActiveTimer <= 0) {
     const drag = Math.exp(-player.friction * delta);
@@ -1453,8 +1515,13 @@ function update(delta) {
 
   const nextX = player.x + player.vx * delta;
   const nextY = player.y + player.vy * delta;
+  const inDoorBand = Math.abs(player.y - shopDoor.y) <= shopDoor.height / 2;
+  const minX = player.x < 0 || (inDoorBand && nextX < player.radius)
+    ? -shopDepth + player.radius
+    : player.radius;
+  const maxX = player.x < 0 && !inDoorBand ? -player.radius : world.width - player.radius;
 
-  player.x = clamp(nextX, player.radius, world.width - player.radius);
+  player.x = clamp(nextX, minX, maxX);
   player.y = clamp(nextY, player.radius, world.height - player.radius);
 
   if (player.x !== nextX) {
@@ -1909,6 +1976,103 @@ function worldToScreenY(y) {
   return y - camera.y + height / 2;
 }
 
+function drawShopArea() {
+  const left = worldToScreenX(-shopDepth);
+  const right = worldToScreenX(0);
+  const top = worldToScreenY(shopDoor.y - 470);
+  const bottom = worldToScreenY(shopDoor.y + 470);
+
+  ctx.save();
+  ctx.fillStyle = "rgba(28, 24, 22, 0.92)";
+  ctx.fillRect(left, top, right - left, bottom - top);
+
+  ctx.strokeStyle = "rgba(255, 207, 95, 0.22)";
+  ctx.lineWidth = 1;
+  for (let x = Math.floor(left / 70) * 70; x < right; x += 70) {
+    ctx.beginPath();
+    ctx.moveTo(x, top);
+    ctx.lineTo(x, bottom);
+    ctx.stroke();
+  }
+  for (let y = Math.floor(top / 70) * 70; y < bottom; y += 70) {
+    ctx.beginPath();
+    ctx.moveTo(left, y);
+    ctx.lineTo(right, y);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = "rgba(255, 207, 95, 0.12)";
+  ctx.strokeStyle = "rgba(255, 207, 95, 0.55)";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.roundRect(left + 42, top + 44, right - left - 84, bottom - top - 88, 8);
+  ctx.fill();
+  ctx.stroke();
+
+  const counterX = worldToScreenX(shopNpc.x + 110);
+  const counterY = worldToScreenY(shopNpc.y + 52);
+  ctx.fillStyle = "#5b3725";
+  ctx.strokeStyle = "#ffcf5f";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.roundRect(counterX - 150, counterY - 26, 300, 52, 7);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = "#ffcf5f";
+  ctx.font = "900 18px Inter, system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("SHOP", counterX, counterY + 6);
+
+  const npcX = worldToScreenX(shopNpc.x);
+  const npcY = worldToScreenY(shopNpc.y);
+  ctx.fillStyle = "#b77a3d";
+  ctx.strokeStyle = "#101214";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(npcX, npcY, shopNpc.radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#f6f2e9";
+  ctx.beginPath();
+  ctx.arc(npcX - 9, npcY - 5, 4, 0, Math.PI * 2);
+  ctx.arc(npcX + 9, npcY - 5, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#101214";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(npcX - 10, npcY + 10);
+  ctx.lineTo(npcX + 10, npcY + 10);
+  ctx.stroke();
+
+  if (isNearShopNpc()) {
+    drawWorldPrompt(shopNpc.x, shopNpc.y - 60, "K: Shop 준비중");
+  }
+
+  ctx.restore();
+}
+
+function drawWorldPrompt(x, y, text) {
+  const screenX = worldToScreenX(x);
+  const screenY = worldToScreenY(y);
+
+  ctx.save();
+  ctx.fillStyle = "rgba(16, 18, 20, 0.78)";
+  ctx.strokeStyle = "rgba(246, 242, 233, 0.24)";
+  ctx.lineWidth = 1;
+  ctx.font = "900 13px Inter, system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const boxWidth = ctx.measureText(text).width + 24;
+  ctx.beginPath();
+  ctx.roundRect(screenX - boxWidth / 2, screenY - 15, boxWidth, 30, 8);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#f6f2e9";
+  ctx.fillText(text, screenX, screenY + 1);
+  ctx.restore();
+}
+
 function drawGrid() {
   const gridSize = 80;
   const startX = Math.floor((camera.x - width / 2) / gridSize) * gridSize;
@@ -1940,10 +2104,32 @@ function drawGrid() {
 function drawWorldBounds() {
   const x = worldToScreenX(0);
   const y = worldToScreenY(0);
+  const doorTop = worldToScreenY(shopDoor.y - shopDoor.height / 2);
+  const doorBottom = worldToScreenY(shopDoor.y + shopDoor.height / 2);
 
   ctx.lineWidth = 5;
   ctx.strokeStyle = "rgba(255, 95, 95, 0.72)";
-  ctx.strokeRect(x, y, world.width, world.height);
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + world.width, y);
+  ctx.lineTo(x + world.width, y + world.height);
+  ctx.lineTo(x, y + world.height);
+  ctx.lineTo(x, doorBottom);
+  ctx.moveTo(x, doorTop);
+  ctx.lineTo(x, y);
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(255, 95, 95, 0.18)";
+  ctx.strokeStyle = "#ffcf5f";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.roundRect(x - 16, doorTop, 32, doorBottom - doorTop, 8);
+  ctx.fill();
+  ctx.stroke();
+
+  if (isNearShopDoor()) {
+    drawWorldPrompt(shopDoor.x + (player.x < 0 ? -90 : 90), shopDoor.y - shopDoor.height / 2 - 42, "K: 이동");
+  }
 }
 
 function drawTreasureCrate(half, kind) {
@@ -2753,6 +2939,7 @@ function draw(time) {
   ctx.fillStyle = "#182026";
   ctx.fillRect(0, 0, width, height);
 
+  drawShopArea();
   drawGrid();
   drawWorldBounds();
   drawCrates();
@@ -2767,6 +2954,23 @@ function draw(time) {
   }
   drawVignette();
   drawMinimap();
+
+  if (shopToastTimer > 0) {
+    ctx.save();
+    ctx.fillStyle = "rgba(16, 18, 20, 0.78)";
+    ctx.strokeStyle = "rgba(255, 207, 95, 0.44)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(width / 2 - 145, 88, 290, 40, 8);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#ffdf86";
+    ctx.font = "900 14px Inter, system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("상점 아이템은 다음 단계에서 추가할게요", width / 2, 109);
+    ctx.restore();
+  }
 }
 
 function startGame() {
@@ -2820,6 +3024,11 @@ window.addEventListener("keydown", (event) => {
   if (event.code === "Space") {
     event.preventDefault();
     dash();
+    return;
+  }
+
+  if (event.key.toLowerCase() === "k") {
+    interact();
     return;
   }
 

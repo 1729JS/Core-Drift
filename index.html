@@ -55,26 +55,26 @@
       <div class="coin-status" id="coinStatus">Coins 0</div>
     </div>
     <div class="upgrade-panel hidden" id="upgradePanel" aria-label="Level up upgrades">
-      <div class="upgrade-title">Level Up</div>
+      <div class="upgrade-title">Level Up <span id="upgradePointsLabel">0</span></div>
       <button class="upgrade-choice" data-upgrade="speed" type="button">
         <span>Move Speed</span>
-        <b>+35</b>
+        <b data-base="+35">+35</b>
       </button>
       <button class="upgrade-choice" data-upgrade="dash" type="button">
         <span>Dash Distance</span>
-        <b>+90</b>
+        <b data-base="+90">+90</b>
       </button>
       <button class="upgrade-choice" data-upgrade="health" type="button">
         <span>Max Health</span>
-        <b>+25</b>
+        <b data-base="+25">+25</b>
       </button>
       <button class="upgrade-choice" data-upgrade="heal" type="button">
         <span>Heal Power</span>
-        <b>+15</b>
+        <b data-base="+15">+15</b>
       </button>
       <button class="upgrade-choice" data-upgrade="damage" type="button">
         <span>Damage</span>
-        <b>+10%</b>
+        <b data-base="+10%">+10%</b>
       </button>
     </div>
     <div class="inventory" aria-label="Weapon slots">
