@@ -993,8 +993,6 @@ function connectMultiplayer() {
       addTeleportEffect(message.x, message.y);
       player.x = message.x;
       player.y = message.y;
-      camera.x = player.x;
-      camera.y = player.y;
       player.knifeSwapTimer = knifeSwapCooldownSeconds;
     } else if (message.type === "knifeSwap") {
       const remoteBullet = remoteBullets.find((bullet) => bullet.id === message.bulletId && bullet.ownerId === message.id);
@@ -1095,8 +1093,6 @@ function swapWithThrownKnife() {
     dropPickupAt(previousPlayerX, previousPlayerY, knife.pickup || { type: "knife", count: 1 });
   }
   bullets.splice(bullets.indexOf(knife), 1);
-  camera.x = player.x;
-  camera.y = player.y;
   player.knifeSwapTimer = knifeSwapCooldownSeconds;
   addTeleportEffect(previousPlayerX, previousPlayerY);
   addTeleportEffect(player.x, player.y);
