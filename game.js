@@ -28,6 +28,7 @@ const world = {
 
 const maxCrates = 40;
 const maxMetalCrates = 20;
+const maxGoldCrates = 10;
 const crateRespawnSeconds = 5;
 const corpseLifetime = 500;
 const pickupLifetimeMs = 5 * 60 * 1000;
@@ -36,15 +37,17 @@ const baseStats = {
   maxSpeed: 480,
   acceleration: 1620,
   dashSpeed: 980,
-  maxHealth: 500,
+  maxHealth: 200,
   healAmount: 60,
   damageMultiplier: 1,
 };
 
 const xpDropValue = 38;
 const metalCrateXpValue = 125;
+const goldCrateXpValue = 350;
 const basicCrateHealth = 150;
-const metalCrateHealth = Math.round(basicCrateHealth * 1.5);
+const metalCrateHealth = 500;
+const goldCrateHealth = 1000;
 const upgradeSteps = {
   speed: { maxSpeed: 35, acceleration: 90 },
   dash: { dashSpeed: 90 },
@@ -67,8 +70,8 @@ const player = {
   dashCooldown: 3,
   dashTimer: 0,
   dashActiveTimer: 0,
-  health: 500,
-  maxHealth: 500,
+  health: 200,
+  maxHealth: 200,
   shield: 0,
   maxShield: 125,
   healAmount: baseStats.healAmount,
@@ -185,7 +188,8 @@ function getCrateCount(kind) {
 function spawnCrate(kind = "basic") {
   for (let attempt = 0; attempt < 80; attempt += 1) {
     const isMetal = kind === "metal";
-    const size = isMetal ? 58 + Math.random() * 18 : 46 + Math.random() * 18;
+    const isGold = kind === "gold";
+    const size = isMetal || isGold ? 58 + Math.random() * 18 : 46 + Math.random() * 18;
     const x = size + Math.random() * (world.width - size * 2);
     const y = size + Math.random() * (world.height - size * 2);
     const distanceFromPlayer = Math.hypot(x - player.x, y - player.y);
@@ -200,8 +204,8 @@ function spawnCrate(kind = "basic") {
       size,
       kind,
       rotation: Math.random() * Math.PI * 2,
-      hp: isMetal ? metalCrateHealth : basicCrateHealth,
-      maxHp: isMetal ? metalCrateHealth : basicCrateHealth,
+      hp: isGold ? goldCrateHealth : isMetal ? metalCrateHealth : basicCrateHealth,
+      maxHp: isGold ? goldCrateHealth : isMetal ? metalCrateHealth : basicCrateHealth,
     });
     return true;
   }
@@ -218,6 +222,10 @@ function createCrates() {
 
   while (getCrateCount("metal") < maxMetalCrates) {
     spawnCrate("metal");
+  }
+
+  while (getCrateCount("gold") < maxGoldCrates) {
+    spawnCrate("gold");
   }
 }
 
@@ -492,6 +500,9 @@ function damageCrate(index, damage) {
     if ((crate.kind || "basic") === "metal") {
       spawnPickup(crate.x, crate.y);
       spawnPickup(crate.x + 28, crate.y - 20, "xp", { value: metalCrateXpValue });
+    } else if ((crate.kind || "basic") === "gold") {
+      spawnPickup(crate.x, crate.y);
+      spawnPickup(crate.x + 30, crate.y - 22, "xp", { value: goldCrateXpValue });
     } else {
       spawnPickup(crate.x, crate.y);
       spawnPickup(crate.x + 26, crate.y - 18, "xp", { value: xpDropValue });
@@ -1556,6 +1567,10 @@ function update(delta) {
       spawnCrate("metal");
     }
 
+    if (getCrateCount("gold") < maxGoldCrates) {
+      spawnCrate("gold");
+    }
+
     crateRegenTimer = crateRespawnSeconds;
   }
 
@@ -1799,6 +1814,87 @@ function drawWorldBounds() {
   ctx.strokeRect(x, y, world.width, world.height);
 }
 
+function drawTreasureCrate(half, kind) {
+  const isGold = kind === "gold";
+  const bodyGradient = ctx.createLinearGradient(-half, -half * 0.15, half, half);
+  bodyGradient.addColorStop(0, isGold ? "#b88c25" : "#6e7880");
+  bodyGradient.addColorStop(0.45, isGold ? "#8b1d19" : "#444d55");
+  bodyGradient.addColorStop(1, isGold ? "#41100d" : "#1d242a");
+  const lidGradient = ctx.createLinearGradient(0, -half, 0, half * 0.1);
+  lidGradient.addColorStop(0, isGold ? "#f4d05f" : "#bec6cc");
+  lidGradient.addColorStop(0.34, isGold ? "#a62c24" : "#79838b");
+  lidGradient.addColorStop(1, isGold ? "#58130f" : "#30383f");
+  const trim = isGold ? "#f3ca54" : "#141c22";
+  const trimLight = isGold ? "#fff0a8" : "#9aa4aa";
+  const stroke = isGold ? "#4d2c06" : "#11171c";
+
+  ctx.fillStyle = bodyGradient;
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.roundRect(-half, -half * 0.12, half * 2, half * 1.18, 5);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = lidGradient;
+  ctx.beginPath();
+  ctx.moveTo(-half, -half * 0.12);
+  ctx.quadraticCurveTo(-half * 0.72, -half * 0.92, 0, -half * 0.94);
+  ctx.quadraticCurveTo(half * 0.72, -half * 0.92, half, -half * 0.12);
+  ctx.lineTo(half, half * 0.1);
+  ctx.lineTo(-half, half * 0.1);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.strokeStyle = trim;
+  ctx.lineWidth = 7;
+  for (const stripeX of [-half * 0.58, half * 0.58]) {
+    ctx.beginPath();
+    ctx.moveTo(stripeX, -half * 0.82);
+    ctx.lineTo(stripeX, half * 1.02);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = trim;
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(-half, half * 0.12);
+  ctx.lineTo(half, half * 0.12);
+  ctx.stroke();
+
+  ctx.fillStyle = trimLight;
+  for (const rivetX of [-half + 10, -half * 0.58, 0, half * 0.58, half - 10]) {
+    for (const rivetY of [-half * 0.52, half * 0.58]) {
+      ctx.beginPath();
+      ctx.arc(rivetX, rivetY, 2.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  ctx.fillStyle = isGold ? "#e5b43f" : "#5b6269";
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.roundRect(-13, -2, 26, 31, 5);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = isGold ? "#5e230c" : "#12181d";
+  ctx.beginPath();
+  ctx.arc(0, 11, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillRect(-2, 11, 4, 10);
+
+  ctx.strokeStyle = isGold ? "rgba(255, 240, 168, 0.32)" : "rgba(238, 244, 246, 0.28)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-half + 9, -half * 0.42);
+  ctx.lineTo(half - 11, -half * 0.54);
+  ctx.moveTo(-half + 10, half * 0.54);
+  ctx.lineTo(half - 12, half * 0.43);
+  ctx.stroke();
+}
+
 function drawCrates() {
   for (const crate of crates) {
     const x = worldToScreenX(crate.x);
@@ -1813,102 +1909,8 @@ function drawCrates() {
     ctx.translate(x, y);
     ctx.rotate(crate.rotation);
 
-    if ((crate.kind || "basic") === "metal") {
-      const lidGradient = ctx.createLinearGradient(0, -half, 0, 4);
-      lidGradient.addColorStop(0, "#bcc4c9");
-      lidGradient.addColorStop(0.48, "#727b82");
-      lidGradient.addColorStop(1, "#30383f");
-      const bodyGradient = ctx.createLinearGradient(-half, 0, half, half);
-      bodyGradient.addColorStop(0, "#707982");
-      bodyGradient.addColorStop(0.45, "#3f474f");
-      bodyGradient.addColorStop(1, "#1d242a");
-
-      ctx.fillStyle = bodyGradient;
-      ctx.strokeStyle = "#11171c";
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.roundRect(-half, -4, crate.size, half + 16, 6);
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.fillStyle = lidGradient;
-      ctx.beginPath();
-      ctx.moveTo(-half, -3);
-      ctx.quadraticCurveTo(-half * 0.82, -half - 14, 0, -half - 16);
-      ctx.quadraticCurveTo(half * 0.82, -half - 14, half, -3);
-      ctx.lineTo(half, 6);
-      ctx.lineTo(-half, 6);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.strokeStyle = "#161d23";
-      ctx.lineWidth = 7;
-      for (const stripeX of [-half * 0.55, half * 0.55]) {
-        ctx.beginPath();
-        ctx.moveTo(stripeX, -half - 6);
-        ctx.lineTo(stripeX, half + 10);
-        ctx.stroke();
-      }
-
-      ctx.strokeStyle = "rgba(238, 244, 246, 0.28)";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(-half + 8, -half * 0.45);
-      ctx.lineTo(half - 10, -half * 0.58);
-      ctx.moveTo(-half + 10, half * 0.38);
-      ctx.lineTo(half - 12, half * 0.28);
-      ctx.stroke();
-
-      ctx.fillStyle = "#9aa4aa";
-      for (const rivetX of [-half + 10, -half * 0.55, 0, half * 0.55, half - 10]) {
-        for (const rivetY of [-half * 0.56, half * 0.52]) {
-          ctx.beginPath();
-          ctx.arc(rivetX, rivetY, 2.5, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-
-      ctx.fillStyle = "#5b6269";
-      ctx.strokeStyle = "#151b20";
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.roundRect(-13, -5, 26, 30, 5);
-      ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = "#12181d";
-      ctx.beginPath();
-      ctx.arc(0, 9, 5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillRect(-2, 9, 4, 10);
-
-      ctx.rotate(-crate.rotation);
-      ctx.translate(0, -half - 30);
-      ctx.fillStyle = "rgba(13, 18, 20, 0.84)";
-      ctx.strokeStyle = "#5ff0c7";
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.roundRect(-18, -18, 36, 36, 8);
-      ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = "#f07d5f";
-      ctx.strokeStyle = "#ffd98d";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(0, 0, 12, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = "rgba(255, 255, 255, 0.68)";
-      ctx.beginPath();
-      ctx.arc(-5, -5, 3, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.font = "900 8px Inter, system-ui, sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillStyle = "#2c1712";
-      ctx.fillText("XP", 0, 2);
-      ctx.translate(0, half + 30);
-      ctx.rotate(crate.rotation);
+    if ((crate.kind || "basic") === "metal" || (crate.kind || "basic") === "gold") {
+      drawTreasureCrate(half, crate.kind || "basic");
     } else {
       ctx.fillStyle = "#b77a3d";
       ctx.strokeStyle = "#5b3725";
@@ -2040,25 +2042,24 @@ function drawPickups(time) {
     } else if (pickup.type === "xp") {
       const value = pickup.value || xpDropValue;
       const pulse = 1 + Math.sin(time * 0.01 + pickup.bob) * 0.08;
+      const isGoldXp = value >= goldCrateXpValue;
+      const isMetalXp = value >= metalCrateXpValue && !isGoldXp;
       ctx.scale(pulse, pulse);
-      ctx.fillStyle = value >= metalCrateXpValue ? "#8df4df" : "#ffcf5f";
-      ctx.strokeStyle = value >= metalCrateXpValue ? "#f6f2e9" : "#8df4df";
+      ctx.fillStyle = isGoldXp ? "#ffcf5f" : isMetalXp ? "#19b8c8" : "#1db9d8";
+      ctx.strokeStyle = isGoldXp ? "#fff0a8" : "#8df4df";
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.arc(0, 0, value >= metalCrateXpValue ? 13 : 10, 0, Math.PI * 2);
+      ctx.arc(0, 0, isGoldXp ? 13 : isMetalXp ? 12 : 10, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
-      ctx.fillStyle = "rgba(255, 255, 255, 0.72)";
+      ctx.fillStyle = isGoldXp ? "rgba(255, 255, 255, 0.76)" : "rgba(221, 255, 229, 0.78)";
       ctx.beginPath();
-      ctx.arc(-3, -4, 3, 0, Math.PI * 2);
+      ctx.arc(-4, -5, 3, 0, Math.PI * 2);
       ctx.fill();
-      if (value >= metalCrateXpValue) {
-        ctx.fillStyle = "#101214";
-        ctx.font = "900 9px Inter, system-ui, sans-serif";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("XP", 0, 1);
-      }
+      ctx.fillStyle = isGoldXp ? "rgba(255, 240, 168, 0.5)" : "rgba(141, 244, 223, 0.38)";
+      ctx.beginPath();
+      ctx.arc(4, 3, 4, 0, Math.PI * 2);
+      ctx.fill();
     }
 
     ctx.restore();

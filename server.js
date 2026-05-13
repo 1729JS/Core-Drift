@@ -9,13 +9,16 @@ const clients = new Map();
 const world = { width: 8800, height: 8800 };
 const maxCrates = 40;
 const maxMetalCrates = 20;
+const maxGoldCrates = 10;
 const crateRespawnMs = 5000;
 const basicCrateHealth = 150;
-const metalCrateHealth = Math.round(basicCrateHealth * 1.5);
+const metalCrateHealth = 500;
+const goldCrateHealth = 1000;
 const xpDropValue = 38;
 const metalCrateXpValue = 125;
+const goldCrateXpValue = 350;
 const pickupLifetimeMs = 5 * 60 * 1000;
-const defaultPlayerHealth = 500;
+const defaultPlayerHealth = 200;
 const crates = [];
 const pickups = [];
 const bullets = [];
@@ -99,7 +102,8 @@ function getCrateCount(kind) {
 function spawnCrate(kind = "basic") {
   for (let attempt = 0; attempt < 80; attempt += 1) {
     const isMetal = kind === "metal";
-    const size = isMetal ? 58 + Math.random() * 18 : 46 + Math.random() * 18;
+    const isGold = kind === "gold";
+    const size = isMetal || isGold ? 58 + Math.random() * 18 : 46 + Math.random() * 18;
     const x = size + Math.random() * (world.width - size * 2);
     const y = size + Math.random() * (world.height - size * 2);
 
@@ -110,8 +114,8 @@ function spawnCrate(kind = "basic") {
       size,
       kind,
       rotation: Math.random() * Math.PI * 2,
-      hp: isMetal ? metalCrateHealth : basicCrateHealth,
-      maxHp: isMetal ? metalCrateHealth : basicCrateHealth,
+      hp: isGold ? goldCrateHealth : isMetal ? metalCrateHealth : basicCrateHealth,
+      maxHp: isGold ? goldCrateHealth : isMetal ? metalCrateHealth : basicCrateHealth,
     });
     return;
   }
@@ -160,6 +164,10 @@ function createCrates() {
 
   while (getCrateCount("metal") < maxMetalCrates) {
     spawnCrate("metal");
+  }
+
+  while (getCrateCount("gold") < maxGoldCrates) {
+    spawnCrate("gold");
   }
 }
 
@@ -285,6 +293,9 @@ function damageCrate(crate, amount) {
     if ((crate.kind || "basic") === "metal") {
       spawnPickup(crate.x, crate.y);
       spawnPickup(crate.x + 28, crate.y - 20, "xp", { value: metalCrateXpValue });
+    } else if ((crate.kind || "basic") === "gold") {
+      spawnPickup(crate.x, crate.y);
+      spawnPickup(crate.x + 30, crate.y - 22, "xp", { value: goldCrateXpValue });
     } else {
       spawnPickup(crate.x, crate.y);
       spawnPickup(crate.x + 26, crate.y - 18, "xp", { value: xpDropValue });
@@ -714,6 +725,11 @@ setInterval(() => {
 
   if (getCrateCount("metal") < maxMetalCrates) {
     spawnCrate("metal");
+    broadcastWorld();
+  }
+
+  if (getCrateCount("gold") < maxGoldCrates) {
+    spawnCrate("gold");
     broadcastWorld();
   }
 }, crateRespawnMs);
