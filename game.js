@@ -1885,6 +1885,32 @@ function drawTreasureCrate(half, kind) {
   ctx.fill();
   ctx.fillRect(-2, 11, 4, 10);
 
+  if (!isGold) {
+    ctx.save();
+    ctx.translate(-half * 0.38, -half * 0.34);
+    ctx.fillStyle = "rgba(12, 16, 18, 0.9)";
+    ctx.strokeStyle = "#6df0d0";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.roundRect(-15, -15, 30, 30, 7);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = "#ffcf5f";
+    ctx.strokeStyle = "#8df4df";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = "rgba(255, 255, 255, 0.72)";
+    ctx.beginPath();
+    ctx.arc(-4, -5, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   ctx.strokeStyle = isGold ? "rgba(255, 240, 168, 0.32)" : "rgba(238, 244, 246, 0.28)";
   ctx.lineWidth = 2;
   ctx.beginPath();
