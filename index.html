@@ -118,53 +118,113 @@
           <button data-action="sell" data-item="awm" type="button">Sell 6 ammo</button>
         </div>
         <div class="shop-section">Upgrades</div>
-        <div class="shop-row">
-          <span>Knife Range</span>
-          <button data-action="upgrade" data-item="knife" data-stat="range" type="button"></button>
+        <div class="shop-upgrade-card" data-item="knife">
+          <div class="shop-upgrade-preview">
+            <span class="weapon-icon knife-icon">
+              <span class="knife-blade"></span>
+              <span class="knife-handle"></span>
+            </span>
+            <strong>Knife</strong>
+          </div>
+          <div class="shop-upgrade-list">
+            <div class="shop-upgrade-row">
+              <span>Range</span>
+              <span class="shop-upgrade-bar" aria-hidden="true"><span></span></span>
+              <small class="shop-upgrade-level">Lv 0</small>
+              <button data-action="upgrade" data-item="knife" data-stat="range" type="button"></button>
+            </div>
+            <div class="shop-upgrade-row">
+              <span>Damage</span>
+              <span class="shop-upgrade-bar" aria-hidden="true"><span></span></span>
+              <small class="shop-upgrade-level">Lv 0</small>
+              <button data-action="upgrade" data-item="knife" data-stat="damage" type="button"></button>
+            </div>
+            <div class="shop-upgrade-row">
+              <span>Stock</span>
+              <span class="shop-upgrade-bar" aria-hidden="true"><span></span></span>
+              <small class="shop-upgrade-level">Lv 0</small>
+              <button data-action="upgrade" data-item="knife" data-stat="mag" type="button"></button>
+            </div>
+            <div class="shop-upgrade-row">
+              <span>Throw Speed</span>
+              <span class="shop-upgrade-bar" aria-hidden="true"><span></span></span>
+              <small class="shop-upgrade-level">Lv 0</small>
+              <button data-action="upgrade" data-item="knife" data-stat="speed" type="button"></button>
+            </div>
+          </div>
         </div>
-        <div class="shop-row">
-          <span>Knife Damage</span>
-          <button data-action="upgrade" data-item="knife" data-stat="damage" type="button"></button>
+        <div class="shop-upgrade-card" data-item="glock">
+          <div class="shop-upgrade-preview">
+            <span class="weapon-icon glock-icon">
+              <span class="glock-slide"></span>
+              <span class="glock-grip"></span>
+              <span class="glock-trigger"></span>
+            </span>
+            <strong>Glock</strong>
+          </div>
+          <div class="shop-upgrade-list">
+            <div class="shop-upgrade-row">
+              <span>Range</span>
+              <span class="shop-upgrade-bar" aria-hidden="true"><span></span></span>
+              <small class="shop-upgrade-level">Lv 0</small>
+              <button data-action="upgrade" data-item="glock" data-stat="range" type="button"></button>
+            </div>
+            <div class="shop-upgrade-row">
+              <span>Damage</span>
+              <span class="shop-upgrade-bar" aria-hidden="true"><span></span></span>
+              <small class="shop-upgrade-level">Lv 0</small>
+              <button data-action="upgrade" data-item="glock" data-stat="damage" type="button"></button>
+            </div>
+            <div class="shop-upgrade-row">
+              <span>Mag</span>
+              <span class="shop-upgrade-bar" aria-hidden="true"><span></span></span>
+              <small class="shop-upgrade-level">Lv 0</small>
+              <button data-action="upgrade" data-item="glock" data-stat="mag" type="button"></button>
+            </div>
+            <div class="shop-upgrade-row">
+              <span>Bullet Speed</span>
+              <span class="shop-upgrade-bar" aria-hidden="true"><span></span></span>
+              <small class="shop-upgrade-level">Lv 0</small>
+              <button data-action="upgrade" data-item="glock" data-stat="speed" type="button"></button>
+            </div>
+          </div>
         </div>
-        <div class="shop-row">
-          <span>Knife Stock</span>
-          <button data-action="upgrade" data-item="knife" data-stat="mag" type="button"></button>
-        </div>
-        <div class="shop-row">
-          <span>Knife Throw Speed</span>
-          <button data-action="upgrade" data-item="knife" data-stat="speed" type="button"></button>
-        </div>
-        <div class="shop-row">
-          <span>Glock Range</span>
-          <button data-action="upgrade" data-item="glock" data-stat="range" type="button"></button>
-        </div>
-        <div class="shop-row">
-          <span>Glock Damage</span>
-          <button data-action="upgrade" data-item="glock" data-stat="damage" type="button"></button>
-        </div>
-        <div class="shop-row">
-          <span>Glock Mag</span>
-          <button data-action="upgrade" data-item="glock" data-stat="mag" type="button"></button>
-        </div>
-        <div class="shop-row">
-          <span>Glock Bullet Speed</span>
-          <button data-action="upgrade" data-item="glock" data-stat="speed" type="button"></button>
-        </div>
-        <div class="shop-row">
-          <span>AWM Range</span>
-          <button data-action="upgrade" data-item="awm" data-stat="range" type="button"></button>
-        </div>
-        <div class="shop-row">
-          <span>AWM Damage</span>
-          <button data-action="upgrade" data-item="awm" data-stat="damage" type="button"></button>
-        </div>
-        <div class="shop-row">
-          <span>AWM Mag</span>
-          <button data-action="upgrade" data-item="awm" data-stat="mag" type="button"></button>
-        </div>
-        <div class="shop-row">
-          <span>AWM Bullet Speed</span>
-          <button data-action="upgrade" data-item="awm" data-stat="speed" type="button"></button>
+        <div class="shop-upgrade-card" data-item="awm">
+          <div class="shop-upgrade-preview">
+            <span class="weapon-icon awm-icon">
+              <span class="awm-scope"></span>
+              <span class="awm-barrel"></span>
+              <span class="awm-body"></span>
+              <span class="awm-stock"></span>
+            </span>
+            <strong>AWM</strong>
+          </div>
+          <div class="shop-upgrade-list">
+            <div class="shop-upgrade-row">
+              <span>Range</span>
+              <span class="shop-upgrade-bar" aria-hidden="true"><span></span></span>
+              <small class="shop-upgrade-level">Lv 0</small>
+              <button data-action="upgrade" data-item="awm" data-stat="range" type="button"></button>
+            </div>
+            <div class="shop-upgrade-row">
+              <span>Damage</span>
+              <span class="shop-upgrade-bar" aria-hidden="true"><span></span></span>
+              <small class="shop-upgrade-level">Lv 0</small>
+              <button data-action="upgrade" data-item="awm" data-stat="damage" type="button"></button>
+            </div>
+            <div class="shop-upgrade-row">
+              <span>Mag</span>
+              <span class="shop-upgrade-bar" aria-hidden="true"><span></span></span>
+              <small class="shop-upgrade-level">Lv 0</small>
+              <button data-action="upgrade" data-item="awm" data-stat="mag" type="button"></button>
+            </div>
+            <div class="shop-upgrade-row">
+              <span>Bullet Speed</span>
+              <span class="shop-upgrade-bar" aria-hidden="true"><span></span></span>
+              <small class="shop-upgrade-level">Lv 0</small>
+              <button data-action="upgrade" data-item="awm" data-stat="speed" type="button"></button>
+            </div>
+          </div>
         </div>
         <div class="shop-row">
           <span>Heal Power</span>

@@ -583,7 +583,15 @@ function updateShopHud() {
     const stat = button.dataset.stat;
     const level = weapons[item]?.upgrades?.[stat] || 0;
     const price = getUpgradePrice(item, stat);
-    button.textContent = `Lv ${level} | Buy ${price}`;
+    const row = button.closest(".shop-upgrade-row");
+    row?.style.setProperty("--upgrade-level", Math.min(level, 10));
+    const levelLabel = row?.querySelector(".shop-upgrade-level");
+
+    if (levelLabel) {
+      levelLabel.textContent = `Lv ${level}`;
+    }
+
+    button.textContent = `Buy ${price}`;
   });
 
   shopPanel?.querySelectorAll("button[data-action='ability']").forEach((button) => {

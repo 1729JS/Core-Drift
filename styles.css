@@ -368,7 +368,8 @@ body {
 }
 
 .shop-header button,
-.shop-row button {
+.shop-row button,
+.shop-upgrade-row button {
   border: 1px solid rgba(246, 242, 233, 0.18);
   border-radius: 7px;
   background: rgba(246, 242, 233, 0.08);
@@ -462,12 +463,121 @@ body {
   text-align: center;
 }
 
+.shop-upgrade-card {
+  display: grid;
+  grid-template-columns: 122px minmax(0, 1fr);
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid rgba(246, 242, 233, 0.14);
+  border-radius: 8px;
+  background: rgba(246, 242, 233, 0.055);
+}
+
+.shop-upgrade-preview {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  min-height: 112px;
+  padding: 10px;
+  border: 1px solid rgba(246, 242, 233, 0.16);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(246, 242, 233, 0.08), rgba(246, 242, 233, 0.025)),
+    rgba(0, 0, 0, 0.18);
+}
+
+.shop-upgrade-preview .weapon-icon {
+  margin: 0;
+  transform-origin: center;
+}
+
+.shop-upgrade-preview .knife-icon {
+  transform: rotate(-24deg) scale(1.1);
+}
+
+.shop-upgrade-preview .glock-icon {
+  transform: scale(1.1);
+}
+
+.shop-upgrade-preview .awm-icon {
+  transform: scale(0.98);
+}
+
+.shop-upgrade-preview strong {
+  color: #f6f2e9;
+  font-size: 14px;
+}
+
+.shop-upgrade-list {
+  display: grid;
+  align-content: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.shop-upgrade-row {
+  --upgrade-level: 0;
+  display: grid;
+  grid-template-columns: 92px minmax(92px, 1fr) 38px auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.shop-upgrade-row > span:first-child {
+  overflow: hidden;
+  color: #f6f2e9;
+  font-size: 12px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shop-upgrade-bar {
+  position: relative;
+  height: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(246, 242, 233, 0.42);
+  border-radius: 4px;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 9px,
+      rgba(246, 242, 233, 0.34) 9px 11px
+    ),
+    rgba(246, 242, 233, 0.08);
+}
+
+.shop-upgrade-bar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--upgrade-level) * 10%);
+  max-width: 100%;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(141, 244, 223, 0.9) 0 9px,
+      rgba(22, 27, 29, 0.9) 9px 11px
+    );
+}
+
+.shop-upgrade-level {
+  color: rgba(246, 242, 233, 0.62);
+  font-size: 11px;
+  font-weight: 900;
+  text-align: right;
+}
+
 .shop-row button {
   min-width: 112px;
   height: 32px;
 }
 
-.shop-row button:hover {
+.shop-upgrade-row button {
+  min-width: 78px;
+}
+
+.shop-row button:hover,
+.shop-upgrade-row button:hover {
   border-color: rgba(141, 244, 223, 0.56);
 }
 
@@ -477,6 +587,25 @@ body {
   color: #8df4df;
   font-size: 12px;
   text-align: center;
+}
+
+@media (max-width: 560px) {
+  .shop-upgrade-card {
+    grid-template-columns: 1fr;
+  }
+
+  .shop-upgrade-preview {
+    min-height: 84px;
+  }
+
+  .shop-upgrade-row {
+    grid-template-columns: 82px minmax(72px, 1fr) 36px;
+  }
+
+  .shop-upgrade-row button {
+    grid-column: 2 / 4;
+    width: 100%;
+  }
 }
 
 .inventory {
