@@ -77,6 +77,32 @@
         <b data-base="+10%">+10%</b>
       </button>
     </div>
+    <div class="leaderboard" id="leaderboard" aria-label="Score leaderboard"></div>
+    <div class="shop-panel hidden" id="shopPanel" aria-label="Shop">
+      <div class="shop-header">
+        <strong>Shop</strong>
+        <button id="shopClose" type="button" aria-label="Close shop">x</button>
+      </div>
+      <div class="shop-coins" id="shopCoins">Coins 0</div>
+      <div class="shop-list">
+        <div class="shop-row" data-item="knife">
+          <span>Knife</span>
+          <button data-action="buy" data-item="knife" type="button">Buy 50</button>
+          <button data-action="sell" data-item="knife" type="button">Sell 25</button>
+        </div>
+        <div class="shop-row" data-item="glock">
+          <span>Glock</span>
+          <button data-action="buy" data-item="glock" type="button">Buy 250</button>
+          <button data-action="sell" data-item="glock" type="button">Sell 100</button>
+        </div>
+        <div class="shop-row" data-item="awm">
+          <span>AWM</span>
+          <button data-action="buy" data-item="awm" type="button">Buy 700</button>
+          <button data-action="sell" data-item="awm" type="button">Sell 300</button>
+        </div>
+      </div>
+      <div class="shop-message" id="shopMessage">K near the vendor to trade.</div>
+    </div>
     <div class="inventory" aria-label="Weapon slots">
       <button class="slot" data-slot="1" type="button" aria-label="Slot 1 Knife">
         <span class="slot-key">1</span>

@@ -141,6 +141,7 @@ body {
 .game-pending .hud,
 .game-pending .inventory,
 .game-pending .skill-slot,
+.game-pending .leaderboard,
 .game-pending .upgrade-panel {
   display: none;
 }
@@ -301,6 +302,125 @@ body {
   color: #8df4df;
   font-size: 11px;
   white-space: nowrap;
+}
+
+.leaderboard {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  min-width: 170px;
+  padding: 9px;
+  border: 1px solid rgba(246, 242, 233, 0.18);
+  border-radius: 8px;
+  background: rgba(16, 18, 20, 0.62);
+  color: #f6f2e9;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  backdrop-filter: blur(10px);
+  pointer-events: none;
+}
+
+.leaderboard-title {
+  margin-bottom: 6px;
+  color: #ffcf5f;
+  font-weight: 900;
+  text-align: center;
+}
+
+.leaderboard-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+}
+
+.shop-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 5;
+  width: min(420px, calc(100vw - 32px));
+  padding: 14px;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(255, 207, 95, 0.5);
+  border-radius: 8px;
+  background: rgba(16, 18, 20, 0.88);
+  color: #f6f2e9;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(12px);
+}
+
+.shop-header,
+.shop-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.shop-header {
+  margin-bottom: 8px;
+}
+
+.shop-header strong {
+  color: #ffcf5f;
+  font-size: 18px;
+}
+
+.shop-header button,
+.shop-row button {
+  border: 1px solid rgba(246, 242, 233, 0.18);
+  border-radius: 7px;
+  background: rgba(246, 242, 233, 0.08);
+  color: #f6f2e9;
+  font: inherit;
+  font-weight: 800;
+}
+
+.shop-header button {
+  width: 30px;
+  height: 30px;
+}
+
+.shop-coins {
+  margin-bottom: 10px;
+  color: #ffdf86;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.shop-list {
+  display: grid;
+  gap: 8px;
+}
+
+.shop-row {
+  padding: 9px;
+  border: 1px solid rgba(246, 242, 233, 0.14);
+  border-radius: 8px;
+  background: rgba(246, 242, 233, 0.06);
+}
+
+.shop-row span {
+  flex: 1;
+  font-weight: 900;
+}
+
+.shop-row button {
+  min-width: 78px;
+  height: 32px;
+}
+
+.shop-row button:hover {
+  border-color: rgba(141, 244, 223, 0.56);
+}
+
+.shop-message {
+  min-height: 18px;
+  margin-top: 10px;
+  color: #8df4df;
+  font-size: 12px;
+  text-align: center;
 }
 
 .inventory {

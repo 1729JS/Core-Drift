@@ -710,18 +710,10 @@ server.on("upgrade", (request, socket) => {
       } else if (message.type === "pickupRequest") {
         const client = clients.get(id);
         const pickup = pickups.find((candidate) => candidate.id === message.id);
-        if (client?.state && pickup && Math.hypot(client.state.x - pickup.x, client.state.y - pickup.y) <= 72) {
+        if (client?.state && pickup && Math.hypot(client.state.x - pickup.x, client.state.y - pickup.y) <= 230) {
           if (pickup.expiresAt && pickup.expiresAt <= Date.now()) {
             pickups.splice(pickups.indexOf(pickup), 1);
             broadcastWorld();
-            continue;
-          }
-
-          if (pickup.type === "armor" && (client.state.shield || 0) >= (client.state.maxShield || 125)) {
-            continue;
-          }
-
-          if (pickup.type === "medkit" && (client.state.health || 0) >= (client.state.maxHealth || defaultPlayerHealth)) {
             continue;
           }
 

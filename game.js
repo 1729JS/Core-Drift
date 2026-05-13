@@ -15,6 +15,11 @@ const upgradePointsLabel = document.querySelector("#upgradePointsLabel");
 const upgradeButtons = document.querySelectorAll(".upgrade-choice");
 const knifeSwapSkill = document.querySelector("#knifeSwapSkill");
 const knifeSwapCooldown = document.querySelector("#knifeSwapCooldown");
+const leaderboard = document.querySelector("#leaderboard");
+const shopPanel = document.querySelector("#shopPanel");
+const shopClose = document.querySelector("#shopClose");
+const shopCoins = document.querySelector("#shopCoins");
+const shopMessage = document.querySelector("#shopMessage");
 const ammoStatus = document.querySelector("#ammoStatus");
 const awmAmmoStatus = document.querySelector("#awmAmmoStatus");
 const inventorySlots = document.querySelectorAll(".slot");
@@ -49,6 +54,13 @@ const shopNpc = {
   x: -560,
   y: world.height / 2,
   radius: 30,
+};
+const magnetRange = 230;
+const magnetSpeed = 780;
+const shopPrices = {
+  knife: { buy: 50, sell: 25 },
+  glock: { buy: 250, sell: 100 },
+  awm: { buy: 700, sell: 300 },
 };
 
 const baseStats = {
@@ -102,6 +114,7 @@ const player = {
   knifeSwapTimer: 0,
   level: 1,
   xp: 0,
+  totalXp: 0,
   xpToNext: 100,
   upgradePoints: 0,
   damageMultiplier: baseStats.damageMultiplier,
@@ -277,6 +290,7 @@ function resetGameState() {
   player.knifeSwapTimer = 0;
   player.level = 1;
   player.xp = 0;
+  player.totalXp = 0;
   player.xpToNext = 100;
   player.upgradePoints = 0;
   player.damageMultiplier = baseStats.damageMultiplier;
@@ -323,7 +337,9 @@ function resetGameState() {
   updateInventory();
   updateXpHud();
   updateCoinHud();
+  updateShopHud();
   updateSkillHud();
+  updateLeaderboard();
   updateUpgradePanel();
 }
 
@@ -453,7 +469,9 @@ function getDeathXpDrop() {
 }
 
 function gainXp(amount) {
-  player.xp += Math.max(0, Math.round(amount));
+  const gained = Math.max(0, Math.round(amount));
+  player.xp += gained;
+  player.totalXp += gained;
 
   while (player.xp >= player.xpToNext) {
     player.xp -= player.xpToNext;
@@ -521,6 +539,42 @@ function updateCoinHud() {
   coinStatus.textContent = `Coins ${player.coins}`;
 }
 
+function updateShopHud() {
+  if (shopCoins) {
+    shopCoins.textContent = `Coins ${player.coins}`;
+  }
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[char]);
+}
+
+function updateLeaderboard() {
+  if (!leaderboard) {
+    return;
+  }
+
+  const rows = [
+    { name: player.name, score: player.totalXp || 0 },
+    ...[...remotePlayers.values()].map((remote) => ({
+      name: remote.name || "Player",
+      score: remote.totalXp || 0,
+    })),
+  ]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
+
+  leaderboard.innerHTML = `<div class="leaderboard-title">XP Ranking</div>${rows
+    .map((row, index) => `<div class="leaderboard-row"><span>${index + 1}. ${escapeHtml(row.name)}</span><b>${Math.floor(row.score)}</b></div>`)
+    .join("")}`;
+}
+
 function updateSkillHud() {
   if (!knifeSwapSkill || !knifeSwapCooldown) {
     return;
@@ -541,7 +595,7 @@ function isNearShopNpc() {
 
 function interact() {
   if (isNearShopNpc()) {
-    shopToastTimer = 2.2;
+    openShop();
     return;
   }
 
@@ -562,6 +616,89 @@ function interact() {
   player.vy = 0;
   addTeleportEffect(player.x, player.y, "#ff6f8f");
   sendNetwork("state", { state: getPlayerSnapshot() });
+}
+
+function openShop() {
+  if (!shopPanel) {
+    return;
+  }
+
+  shopPanel.classList.remove("hidden");
+  updateShopHud();
+  setShopMessage("사고 팔 아이템을 선택하세요.");
+}
+
+function closeShop() {
+  shopPanel?.classList.add("hidden");
+}
+
+function isShopOpen() {
+  return Boolean(shopPanel && !shopPanel.classList.contains("hidden"));
+}
+
+function setShopMessage(text) {
+  if (shopMessage) {
+    shopMessage.textContent = text;
+  }
+}
+
+function buyShopItem(item) {
+  const price = shopPrices[item]?.buy;
+
+  if (!price || player.coins < price) {
+    setShopMessage("코인이 부족합니다.");
+    return;
+  }
+
+  const pickup =
+    item === "knife"
+      ? { type: "knife", count: 1 }
+      : { type: item, ammo: weapons[item].magazineSize, magAmmo: 0 };
+
+  if (!addWeaponToInventory(pickup)) {
+    setShopMessage("아이템 창이 가득 찼습니다.");
+    return;
+  }
+
+  player.coins -= price;
+  updateInventory();
+  updateCoinHud();
+  updateShopHud();
+  setShopMessage(`${getWeaponDisplay(item).label} 구매 완료`);
+}
+
+function sellShopItem(item) {
+  const price = shopPrices[item]?.sell;
+
+  if (!price || ![1, 2, 3].find((slot) => weapons.slots[slot] === item)) {
+    setShopMessage("판매할 아이템이 없습니다.");
+    return;
+  }
+
+  if (item === "knife") {
+    weapons.knife.count -= 1;
+    if (weapons.knife.count <= 0) {
+      const slot = [1, 2, 3].find((candidate) => weapons.slots[candidate] === "knife");
+      if (slot) weapons.slots[slot] = null;
+      weapons.knife.count = 0;
+    }
+  } else {
+    const slot = [1, 2, 3].find((candidate) => weapons.slots[candidate] === item);
+    if (slot) weapons.slots[slot] = null;
+    weapons[item].ammo = 0;
+    weapons[item].magAmmo = 0;
+    weapons[item].reloadTimer = 0;
+  }
+
+  if (!weapons.slots[weapons.selectedSlot]) {
+    weapons.selectedSlot = [1, 2, 3].find((slot) => weapons.slots[slot]) || weapons.selectedSlot;
+  }
+
+  player.coins += price;
+  updateInventory();
+  updateCoinHud();
+  updateShopHud();
+  setShopMessage(`${getWeaponDisplay(item).label} 판매 완료`);
 }
 
 function updateUpgradePanel() {
@@ -734,11 +871,11 @@ function canCollectPickup(item) {
   const type = getPickupType(item);
 
   if (type === "armor") {
-    return player.shield < player.maxShield;
+    return true;
   }
 
   if (type === "medkit") {
-    return player.health < player.maxHealth;
+    return true;
   }
 
   if (type === "xp") {
@@ -754,6 +891,11 @@ function canCollectPickup(item) {
   }
 
   return false;
+}
+
+function canMagnetPickup(item) {
+  const type = getPickupType(item);
+  return type === "armor" || type === "medkit" || canCollectPickup(item);
 }
 
 function addWeaponToInventory(item) {
@@ -846,6 +988,7 @@ function collectPickup(index) {
   } else if (pickup.type === "coin") {
     player.coins += pickup.value || coinValues[pickup.coinKind] || coinValues.bronze;
     updateCoinHud();
+    updateShopHud();
     collected = true;
   }
 
@@ -878,6 +1021,7 @@ function applyPickupItem(item) {
   } else if (type === "coin") {
     player.coins += item.value || coinValues[item.coinKind] || coinValues.bronze;
     updateCoinHud();
+    updateShopHud();
     collected = true;
   }
 
@@ -1003,6 +1147,21 @@ function playEffect(effect) {
   }
 }
 
+shopClose?.addEventListener("click", closeShop);
+shopPanel?.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-action]");
+
+  if (!button) {
+    return;
+  }
+
+  if (button.dataset.action === "buy") {
+    buyShopItem(button.dataset.item);
+  } else {
+    sellShopItem(button.dataset.item);
+  }
+});
+
 function connectMultiplayer() {
   if (socket || location.protocol === "file:") {
     return;
@@ -1077,6 +1236,7 @@ function connectMultiplayer() {
     } else if (message.type === "coinGranted") {
       player.coins += message.value || coinValues[message.coinKind] || coinValues.bronze;
       updateCoinHud();
+      updateShopHud();
       playPickupSound("coin");
     } else if (message.type === "health") {
       player.health = message.health;
@@ -1192,6 +1352,7 @@ function getPlayerSnapshot() {
     xp: player.xp,
     xpToNext: player.xpToNext,
     coins: player.coins,
+    totalXp: player.totalXp,
     upgradePoints: player.upgradePoints,
     damageMultiplier: player.damageMultiplier,
     upgrades: player.upgrades,
@@ -1263,6 +1424,21 @@ function getMoveAxis() {
   return { x, y, active: length > 0 };
 }
 
+function startReload(weaponName = weapons.slots[weapons.selectedSlot]) {
+  if (weaponName !== "glock" && weaponName !== "awm") {
+    return false;
+  }
+
+  const weapon = weapons[weaponName];
+
+  if (weapon.reloadTimer > 0 || weapon.ammo <= 0 || weapon.magAmmo >= weapon.magazineSize) {
+    return false;
+  }
+
+  weapon.reloadTimer = weapon.reloadTime;
+  return true;
+}
+
 function fireBullet() {
   const selectedWeapon = weapons.slots[weapons.selectedSlot];
 
@@ -1278,10 +1454,7 @@ function fireBullet() {
   }
 
   if (weapon.magAmmo <= 0) {
-    if (weapon.ammo > 0) {
-      weapon.reloadTimer = weapon.reloadTime;
-    }
-
+    startReload(selectedWeapon);
     return false;
   }
 
@@ -1308,7 +1481,7 @@ function fireBullet() {
   weapon.magAmmo -= 1;
 
   if (weapon.magAmmo <= 0 && weapon.ammo > 0) {
-    weapon.reloadTimer = weapon.reloadTime;
+    startReload(selectedWeapon);
   }
 
   playGunSound(isGlock ? "glock" : "awm");
@@ -1515,14 +1688,14 @@ function update(delta) {
 
   const nextX = player.x + player.vx * delta;
   const nextY = player.y + player.vy * delta;
-  const inDoorBand = Math.abs(player.y - shopDoor.y) <= shopDoor.height / 2;
-  const minX = player.x < 0 || (inDoorBand && nextX < player.radius)
-    ? -shopDepth + player.radius
-    : player.radius;
-  const maxX = player.x < 0 && !inDoorBand ? -player.radius : world.width - player.radius;
+  const isInShop = player.x < 0;
+  const minX = isInShop ? -shopDepth + player.radius : player.radius;
+  const maxX = isInShop ? -player.radius : world.width - player.radius;
+  const minY = isInShop ? shopDoor.y - 470 + player.radius : player.radius;
+  const maxY = isInShop ? shopDoor.y + 470 - player.radius : world.height - player.radius;
 
   player.x = clamp(nextX, minX, maxX);
-  player.y = clamp(nextY, player.radius, world.height - player.radius);
+  player.y = clamp(nextY, minY, maxY);
 
   if (player.x !== nextX) {
     player.vx = 0;
@@ -1548,8 +1721,9 @@ function update(delta) {
       weapon.reloadTimer = Math.max(0, weapon.reloadTimer - delta);
 
       if (weapon.reloadTimer === 0) {
-        const loaded = Math.min(weapon.magazineSize, weapon.ammo);
-        weapon.magAmmo = loaded;
+        const missing = Math.max(0, weapon.magazineSize - weapon.magAmmo);
+        const loaded = Math.min(missing, weapon.ammo);
+        weapon.magAmmo += loaded;
         weapon.ammo -= loaded;
       }
     }
@@ -1750,6 +1924,14 @@ function update(delta) {
     if (pickup.expiresAt && pickup.expiresAt <= Date.now()) {
       pickups.splice(index, 1);
       continue;
+    }
+
+    const distanceToPickup = Math.hypot(pickup.x - player.x, pickup.y - player.y);
+
+    if (distanceToPickup <= magnetRange && distanceToPickup > pickup.radius + player.radius && canMagnetPickup(pickup)) {
+      const pull = Math.min(distanceToPickup, magnetSpeed * delta);
+      pickup.x += ((player.x - pickup.x) / distanceToPickup) * pull;
+      pickup.y += ((player.y - pickup.y) / distanceToPickup) * pull;
     }
 
     if (Math.hypot(pickup.x - player.x, pickup.y - player.y) <= pickup.radius + player.radius) {
@@ -3014,6 +3196,13 @@ window.addEventListener("keydown", (event) => {
     return;
   }
 
+  if (isShopOpen()) {
+    if (event.key === "Escape" || event.key.toLowerCase() === "k") {
+      closeShop();
+    }
+    return;
+  }
+
   getAudioContext();
 
   if (event.key === "1" || event.key === "2" || event.key === "3") {
@@ -3029,6 +3218,11 @@ window.addEventListener("keydown", (event) => {
 
   if (event.key.toLowerCase() === "k") {
     interact();
+    return;
+  }
+
+  if (event.key.toLowerCase() === "r") {
+    startReload();
     return;
   }
 
@@ -3053,6 +3247,10 @@ window.addEventListener("mousemove", (event) => {
 });
 window.addEventListener("mousedown", (event) => {
   if (!gameStarted) {
+    return;
+  }
+
+  if (isShopOpen()) {
     return;
   }
 
