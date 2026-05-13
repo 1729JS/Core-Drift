@@ -15,6 +15,8 @@ const upgradePointsLabel = document.querySelector("#upgradePointsLabel");
 const upgradeButtons = document.querySelectorAll(".upgrade-choice");
 const knifeSwapSkill = document.querySelector("#knifeSwapSkill");
 const knifeSwapCooldown = document.querySelector("#knifeSwapCooldown");
+const lightningThrustSkill = document.querySelector("#lightningThrustSkill");
+const lightningThrustCooldown = document.querySelector("#lightningThrustCooldown");
 const leaderboard = document.querySelector("#leaderboard");
 const chatLog = document.querySelector("#chatLog");
 const chatForm = document.querySelector("#chatForm");
@@ -48,6 +50,10 @@ const crateRespawnSeconds = 5;
 const corpseLifetime = 500;
 const pickupLifetimeMs = 5 * 60 * 1000;
 const knifeSwapCooldownSeconds = 5;
+const lightningThrustCooldownSeconds = 8;
+const lightningThrustRange = 360;
+const lightningThrustDamage = 85;
+const lightningThrustHitRadius = 42;
 const chatMessageLifetime = 6500;
 const maxChatMessages = 40;
 const profileStoragePrefix = "core-drift-profile:";
@@ -129,6 +135,8 @@ const player = {
   healAmount: baseStats.healAmount,
   coins: 0,
   knifeSwapTimer: 0,
+  lightningThrustTimer: 0,
+  lightningThrustActiveTimer: 0,
   level: 1,
   xp: 0,
   totalXp: 0,
@@ -244,6 +252,7 @@ const remotePlayers = new Map();
 const remoteBullets = [];
 const corpses = [];
 const teleportEffects = [];
+const lightningEffects = [];
 const chatMessages = [];
 
 function getCrateCount(kind) {
@@ -313,6 +322,8 @@ function resetGameState() {
   player.healAmount = baseStats.healAmount;
   player.coins = 0;
   player.knifeSwapTimer = 0;
+  player.lightningThrustTimer = 0;
+  player.lightningThrustActiveTimer = 0;
   player.level = 1;
   player.xp = 0;
   player.totalXp = 0;
@@ -336,6 +347,7 @@ function resetGameState() {
   camera.x = player.x;
   camera.y = player.y;
   bullets.length = 0;
+  lightningEffects.length = 0;
   if (!sharedWorldActive) {
     pickups.length = 0;
   }
@@ -497,6 +509,46 @@ function addTeleportEffect(x, y, color = "#8df4df") {
     color,
     startedAt: performance.now(),
     duration: 420,
+  });
+}
+
+function addLightningThrustEffect(startX, startY, endX, endY, color = "#7cd7ff") {
+  const angle = Math.atan2(endY - startY, endX - startX);
+  const length = Math.hypot(endX - startX, endY - startY);
+  const normalX = -Math.sin(angle);
+  const normalY = Math.cos(angle);
+  const points = [];
+  const bolts = [];
+
+  for (let index = 0; index <= 8; index += 1) {
+    const t = index / 8;
+    const jitter = (Math.random() - 0.5) * 38 * Math.sin(Math.PI * t);
+    points.push({
+      x: startX + Math.cos(angle) * length * t + normalX * jitter,
+      y: startY + Math.sin(angle) * length * t + normalY * jitter,
+    });
+  }
+
+  for (let bolt = 0; bolt < 7; bolt += 1) {
+    const t = 0.16 + Math.random() * 0.72;
+    const side = Math.random() < 0.5 ? -1 : 1;
+    const span = 24 + Math.random() * 48;
+    const x = startX + Math.cos(angle) * length * t;
+    const y = startY + Math.sin(angle) * length * t;
+    bolts.push({
+      x1: x,
+      y1: y,
+      x2: x + normalX * side * span + Math.cos(angle) * (Math.random() - 0.5) * 40,
+      y2: y + normalY * side * span + Math.sin(angle) * (Math.random() - 0.5) * 40,
+    });
+  }
+
+  lightningEffects.push({
+    points,
+    bolts,
+    color,
+    startedAt: performance.now(),
+    duration: 360,
   });
 }
 
@@ -1036,13 +1088,18 @@ function updateLeaderboard() {
 }
 
 function updateSkillHud() {
-  if (!knifeSwapSkill || !knifeSwapCooldown) {
-    return;
+  if (knifeSwapSkill && knifeSwapCooldown) {
+    const ready = player.knifeSwapTimer <= 0;
+    knifeSwapSkill.classList.toggle("ready", ready);
+    knifeSwapCooldown.textContent = ready ? "" : Math.ceil(player.knifeSwapTimer);
   }
 
-  const ready = player.knifeSwapTimer <= 0;
-  knifeSwapSkill.classList.toggle("ready", ready);
-  knifeSwapCooldown.textContent = ready ? "" : Math.ceil(player.knifeSwapTimer);
+  if (lightningThrustSkill && lightningThrustCooldown) {
+    const hasKnife = weapons.slots[weapons.selectedSlot] === "knife";
+    const ready = player.lightningThrustTimer <= 0 && hasKnife;
+    lightningThrustSkill.classList.toggle("ready", ready);
+    lightningThrustCooldown.textContent = ready ? "" : hasKnife ? Math.ceil(player.lightningThrustTimer) : "K";
+  }
 }
 
 function isNearShopDoor() {
@@ -1819,6 +1876,20 @@ function connectMultiplayer() {
       if (remoteBullet) {
         remoteBullets.splice(remoteBullets.indexOf(remoteBullet), 1);
       }
+    } else if (message.type === "lightningThrust") {
+      const remote = remotePlayers.get(message.id);
+      const attack = message.attack;
+      if (attack) {
+        addLightningThrustEffect(attack.startX, attack.startY, attack.endX, attack.endY, "#ffdf86");
+        if (remote) {
+          remote.x = attack.endX;
+          remote.y = attack.endY;
+          remote.renderX = attack.endX;
+          remote.renderY = attack.endY;
+          remote.swingTimer = 0.22;
+          remote.swingDuration = 0.22;
+        }
+      }
     } else if (message.type === "pickupGranted") {
       applyPickupItem(message.item);
     } else if (message.type === "xpGranted") {
@@ -1929,6 +2000,58 @@ function swapWithThrownKnife() {
   addTeleportEffect(player.x, player.y);
   sendNetwork("knifeSwap", { bulletId: knife.id });
   sendNetwork("state", { state: getPlayerSnapshot() });
+  return true;
+}
+
+function useLightningThrust() {
+  if (player.lightningThrustTimer > 0 || weapons.slots[weapons.selectedSlot] !== "knife" || weapons.knife.count <= 0) {
+    return false;
+  }
+
+  const angle = getAimAngle();
+  const startX = player.x;
+  const startY = player.y;
+  const distance = lightningThrustRange + Math.min(140, weapons.knife.throwSpeedBonus * 0.7);
+  const endX = clamp(startX + Math.cos(angle) * distance, player.radius, world.width - player.radius);
+  const endY = clamp(startY + Math.sin(angle) * distance, player.radius, world.height - player.radius);
+  const damage = getScaledDamage(lightningThrustDamage + weapons.knife.damage * 0.55);
+
+  player.x = endX;
+  player.y = endY;
+  player.vx = Math.cos(angle) * 220;
+  player.vy = Math.sin(angle) * 220;
+  player.lightningThrustTimer = lightningThrustCooldownSeconds;
+  player.lightningThrustActiveTimer = 0.18;
+  player.swingTimer = 0.22;
+  player.knifeCharging = false;
+  player.knifeCharge = 0;
+  addLightningThrustEffect(startX, startY, endX, endY);
+  playTone({ frequency: 360, duration: 0.05, type: "sawtooth", gain: 0.055 });
+  playTone({ frequency: 1040, duration: 0.12, type: "triangle", gain: 0.052, when: 0.03 });
+  playNoise({ duration: 0.12, gain: 0.1, filterFrequency: 1200 });
+
+  if (sharedWorldActive) {
+    sendNetwork("lightningThrust", {
+      attack: {
+        startX,
+        startY,
+        endX,
+        endY,
+        damage,
+        radius: lightningThrustHitRadius,
+      },
+    });
+    sendNetwork("state", { state: getPlayerSnapshot() });
+    return true;
+  }
+
+  for (let index = crates.length - 1; index >= 0; index -= 1) {
+    const crate = crates[index];
+    if (segmentHitsBox(startX, startY, endX, endY, crate, lightningThrustHitRadius)) {
+      damageCrate(index, damage);
+    }
+  }
+
   return true;
 }
 
@@ -2282,16 +2405,17 @@ function update(delta) {
   }
 
   player.dashActiveTimer = Math.max(0, player.dashActiveTimer - delta);
+  player.lightningThrustActiveTimer = Math.max(0, player.lightningThrustActiveTimer - delta);
   shopToastTimer = Math.max(0, shopToastTimer - delta);
 
-  if (player.dashActiveTimer <= 0) {
+  if (player.dashActiveTimer <= 0 && player.lightningThrustActiveTimer <= 0) {
     const drag = Math.exp(-player.friction * delta);
     player.vx *= drag;
     player.vy *= drag;
   }
 
   const nextSpeed = Math.hypot(player.vx, player.vy);
-  if (player.dashActiveTimer <= 0 && nextSpeed > player.maxSpeed) {
+  if (player.dashActiveTimer <= 0 && player.lightningThrustActiveTimer <= 0 && nextSpeed > player.maxSpeed) {
     player.vx = (player.vx / nextSpeed) * player.maxSpeed;
     player.vy = (player.vy / nextSpeed) * player.maxSpeed;
   }
@@ -2319,6 +2443,7 @@ function update(delta) {
   player.swingTimer = Math.max(0, player.swingTimer - delta);
   player.punchTimer = Math.max(0, player.punchTimer - delta);
   player.knifeSwapTimer = Math.max(0, player.knifeSwapTimer - delta);
+  player.lightningThrustTimer = Math.max(0, player.lightningThrustTimer - delta);
   if (player.knifeCharging && weapons.slots[weapons.selectedSlot] === "knife") {
     player.knifeCharge = Math.min(player.knifeChargeMax, player.knifeCharge + delta);
   }
@@ -3549,6 +3674,58 @@ function drawTeleportEffects() {
   }
 }
 
+function drawLightningEffects() {
+  const now = performance.now();
+
+  for (let index = lightningEffects.length - 1; index >= 0; index -= 1) {
+    const effect = lightningEffects[index];
+    const progress = clamp((now - effect.startedAt) / effect.duration, 0, 1);
+
+    if (progress >= 1) {
+      lightningEffects.splice(index, 1);
+      continue;
+    }
+
+    const alpha = 1 - progress;
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.globalAlpha = alpha;
+
+    for (const width of [18, 8, 3]) {
+      ctx.strokeStyle = width === 3 ? "#f5fdff" : effect.color;
+      ctx.lineWidth = width;
+      ctx.globalAlpha = alpha * (width === 18 ? 0.18 : width === 8 ? 0.42 : 0.95);
+      ctx.beginPath();
+      for (let pointIndex = 0; pointIndex < effect.points.length; pointIndex += 1) {
+        const point = effect.points[pointIndex];
+        const x = worldToScreenX(point.x);
+        const y = worldToScreenY(point.y);
+        if (pointIndex === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = "#c9f6ff";
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = alpha * 0.72;
+    for (const bolt of effect.bolts) {
+      ctx.beginPath();
+      ctx.moveTo(worldToScreenX(bolt.x1), worldToScreenY(bolt.y1));
+      ctx.lineTo(worldToScreenX(bolt.x2), worldToScreenY(bolt.y2));
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+}
+
 function drawPlayer(time) {
   const x = worldToScreenX(player.x);
   const y = worldToScreenY(player.y);
@@ -3760,6 +3937,7 @@ function draw(time) {
   drawCorpses(time);
   drawRemotePlayers(time);
   drawTeleportEffects();
+  drawLightningEffects();
   if (!deathPending) {
     drawPlayer(time);
   }
@@ -3881,6 +4059,11 @@ window.addEventListener("keydown", (event) => {
 
   if (event.key.toLowerCase() === "f") {
     swapWithThrownKnife();
+    return;
+  }
+
+  if (event.key.toLowerCase() === "g") {
+    useLightningThrust();
     return;
   }
 

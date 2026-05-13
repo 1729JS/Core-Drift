@@ -713,6 +713,14 @@ body {
     grid-column: 2 / 4;
     width: 100%;
   }
+
+  .skill-slot {
+    left: calc(50% + 136px);
+  }
+
+  .lightning-slot {
+    left: calc(50% + 196px);
+  }
 }
 
 .inventory {
@@ -738,6 +746,14 @@ body {
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.34);
   backdrop-filter: blur(10px);
   pointer-events: none;
+}
+
+.lightning-slot {
+  left: calc(50% + 208px);
+  border-color: rgba(124, 215, 255, 0.52);
+  box-shadow:
+    0 8px 28px rgba(0, 0, 0, 0.34),
+    0 0 24px rgba(88, 166, 255, 0.16);
 }
 
 .skill-key {
@@ -776,6 +792,23 @@ body {
   content: "";
   border-radius: 2px;
   background: #20272b;
+}
+
+.lightning-icon {
+  position: absolute;
+  left: 18px;
+  top: 14px;
+  width: 22px;
+  height: 28px;
+  filter: drop-shadow(0 0 8px rgba(124, 215, 255, 0.9));
+}
+
+.lightning-icon::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  clip-path: polygon(45% 0, 88% 0, 58% 36%, 88% 36%, 31% 100%, 43% 53%, 14% 53%);
+  background: linear-gradient(180deg, #f5fdff, #7cd7ff 48%, #8df4df);
 }
 
 .skill-cooldown {

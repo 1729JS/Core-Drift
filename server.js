@@ -349,6 +349,62 @@ function handleMelee(ownerId, attack) {
   }
 }
 
+function handleLightningThrust(ownerId, attack) {
+  const owner = clients.get(ownerId);
+
+  if (!owner?.state || !attack) {
+    return;
+  }
+
+  const startX = clamp(Number(attack.startX), 0, world.width);
+  const startY = clamp(Number(attack.startY), 0, world.height);
+  const endX = clamp(Number(attack.endX), 0, world.width);
+  const endY = clamp(Number(attack.endY), 0, world.height);
+  const damage = clamp(Number(attack.damage || 0), 0, 260);
+  const radius = clamp(Number(attack.radius || 42), 18, 70);
+  let worldChanged = false;
+
+  if (Math.hypot(startX - owner.state.x, startY - owner.state.y) > 140) {
+    return;
+  }
+
+  if (Math.hypot(endX - startX, endY - startY) > 540 || damage <= 0) {
+    return;
+  }
+
+  owner.state = { ...owner.state, x: endX, y: endY };
+
+  for (let index = crates.length - 1; index >= 0; index -= 1) {
+    const crate = crates[index];
+    if (segmentHitsBox(startX, startY, endX, endY, crate, radius)) {
+      damageCrate(crate, damage);
+      worldChanged = true;
+    }
+  }
+
+  for (const [targetId, client] of clients) {
+    if (targetId === ownerId || !client.state || client.state.health <= 0) {
+      continue;
+    }
+
+    if (segmentHitsCircle(startX, startY, endX, endY, client.state.x, client.state.y, radius + 24)) {
+      const knockback = getKnockback(damage, endX - startX, endY - startY);
+      damageClient(targetId, damage, ownerId, knockback);
+    }
+  }
+
+  if (worldChanged) {
+    broadcastWorld();
+  }
+
+  broadcast({ type: "state", id: ownerId, state: owner.state }, ownerId);
+  broadcast({
+    type: "lightningThrust",
+    id: ownerId,
+    attack: { startX, startY, endX, endY, radius, damage },
+  }, ownerId);
+}
+
 function updateBullets(delta) {
   let worldChanged = false;
 
@@ -909,6 +965,8 @@ server.on("upgrade", (request, socket) => {
       } else if (message.type === "melee") {
         handleMelee(id, message.attack);
         broadcast({ type: "melee", id, attack: message.attack }, id);
+      } else if (message.type === "lightningThrust") {
+        handleLightningThrust(id, message.attack);
       } else if (message.type === "dropPickup") {
         const client = clients.get(id);
         const pickup = message.pickup || {};
