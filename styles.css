@@ -721,6 +721,10 @@ body {
   .lightning-slot {
     left: calc(50% + 196px);
   }
+
+  .railburst-slot {
+    left: calc(50% + 256px);
+  }
 }
 
 .inventory {
@@ -754,6 +758,14 @@ body {
   box-shadow:
     0 8px 28px rgba(0, 0, 0, 0.34),
     0 0 24px rgba(88, 166, 255, 0.16);
+}
+
+.railburst-slot {
+  left: calc(50% + 270px);
+  border-color: rgba(255, 207, 95, 0.54);
+  box-shadow:
+    0 8px 28px rgba(0, 0, 0, 0.34),
+    0 0 24px rgba(255, 207, 95, 0.16);
 }
 
 .skill-key {
@@ -809,6 +821,41 @@ body {
   content: "";
   clip-path: polygon(45% 0, 88% 0, 58% 36%, 88% 36%, 31% 100%, 43% 53%, 14% 53%);
   background: linear-gradient(180deg, #f5fdff, #7cd7ff 48%, #8df4df);
+}
+
+.railburst-icon {
+  position: absolute;
+  left: 14px;
+  top: 22px;
+  width: 30px;
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f5fdff, #ffdf86 48%, transparent);
+  box-shadow:
+    0 0 8px rgba(255, 207, 95, 0.9),
+    0 0 16px rgba(124, 215, 255, 0.35);
+}
+
+.railburst-icon::before,
+.railburst-icon::after {
+  position: absolute;
+  left: 4px;
+  width: 18px;
+  height: 2px;
+  content: "";
+  border-radius: 999px;
+  background: #7cd7ff;
+  box-shadow: 0 0 8px rgba(124, 215, 255, 0.9);
+}
+
+.railburst-icon::before {
+  top: -7px;
+  transform: rotate(-18deg);
+}
+
+.railburst-icon::after {
+  bottom: -7px;
+  transform: rotate(18deg);
 }
 
 .skill-cooldown {

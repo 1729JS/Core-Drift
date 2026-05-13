@@ -17,6 +17,8 @@ const knifeSwapSkill = document.querySelector("#knifeSwapSkill");
 const knifeSwapCooldown = document.querySelector("#knifeSwapCooldown");
 const lightningThrustSkill = document.querySelector("#lightningThrustSkill");
 const lightningThrustCooldown = document.querySelector("#lightningThrustCooldown");
+const railburstSkill = document.querySelector("#railburstSkill");
+const railburstCooldown = document.querySelector("#railburstCooldown");
 const leaderboard = document.querySelector("#leaderboard");
 const chatLog = document.querySelector("#chatLog");
 const chatForm = document.querySelector("#chatForm");
@@ -54,6 +56,11 @@ const lightningThrustCooldownSeconds = 8;
 const lightningThrustRange = 360;
 const lightningThrustDamage = 85;
 const lightningThrustHitRadius = 42;
+const railburstCooldownSeconds = 10;
+const railburstChargeSeconds = 0.45;
+const railburstRange = 1500;
+const railburstWidth = 160;
+const railburstDamage = 150;
 const chatMessageLifetime = 6500;
 const maxChatMessages = 40;
 const profileStoragePrefix = "core-drift-profile:";
@@ -137,6 +144,9 @@ const player = {
   knifeSwapTimer: 0,
   lightningThrustTimer: 0,
   lightningThrustActiveTimer: 0,
+  railburstTimer: 0,
+  railburstChargeTimer: 0,
+  railburstCharge: null,
   level: 1,
   xp: 0,
   totalXp: 0,
@@ -253,6 +263,7 @@ const remoteBullets = [];
 const corpses = [];
 const teleportEffects = [];
 const lightningEffects = [];
+const railburstEffects = [];
 const chatMessages = [];
 
 function getCrateCount(kind) {
@@ -324,6 +335,9 @@ function resetGameState() {
   player.knifeSwapTimer = 0;
   player.lightningThrustTimer = 0;
   player.lightningThrustActiveTimer = 0;
+  player.railburstTimer = 0;
+  player.railburstChargeTimer = 0;
+  player.railburstCharge = null;
   player.level = 1;
   player.xp = 0;
   player.totalXp = 0;
@@ -348,6 +362,7 @@ function resetGameState() {
   camera.y = player.y;
   bullets.length = 0;
   lightningEffects.length = 0;
+  railburstEffects.length = 0;
   if (!sharedWorldActive) {
     pickups.length = 0;
   }
@@ -549,6 +564,56 @@ function addLightningThrustEffect(startX, startY, endX, endY, color = "#7cd7ff")
     color,
     startedAt: performance.now(),
     duration: 360,
+  });
+}
+
+function addRailburstEffect(startX, startY, endX, endY, color = "#ffdf86") {
+  const angle = Math.atan2(endY - startY, endX - startX);
+  const length = Math.hypot(endX - startX, endY - startY);
+  const normalX = -Math.sin(angle);
+  const normalY = Math.cos(angle);
+  const arcs = [];
+  const streaks = [];
+
+  for (let arc = 0; arc < 32; arc += 1) {
+    const t = Math.random();
+    const side = Math.random() < 0.5 ? -1 : 1;
+    const spread = 34 + Math.random() * railburstWidth * 0.85;
+    const x = startX + Math.cos(angle) * length * t;
+    const y = startY + Math.sin(angle) * length * t;
+    arcs.push({
+      x1: x,
+      y1: y,
+      x2: x + normalX * side * spread + Math.cos(angle) * (Math.random() - 0.5) * 92,
+      y2: y + normalY * side * spread + Math.sin(angle) * (Math.random() - 0.5) * 92,
+    });
+  }
+
+  for (let streak = 0; streak < 22; streak += 1) {
+    const t = Math.random() * 0.92;
+    const sideOffset = (Math.random() - 0.5) * railburstWidth * 0.72;
+    const streakLength = 120 + Math.random() * 280;
+    const x = startX + Math.cos(angle) * length * t + normalX * sideOffset;
+    const y = startY + Math.sin(angle) * length * t + normalY * sideOffset;
+    streaks.push({
+      x1: x,
+      y1: y,
+      x2: x + Math.cos(angle) * streakLength,
+      y2: y + Math.sin(angle) * streakLength,
+      width: 2 + Math.random() * 5,
+    });
+  }
+
+  railburstEffects.push({
+    startX,
+    startY,
+    endX,
+    endY,
+    arcs,
+    streaks,
+    color,
+    startedAt: performance.now(),
+    duration: 560,
   });
 }
 
@@ -1099,6 +1164,12 @@ function updateSkillHud() {
     const ready = player.lightningThrustTimer <= 0 && hasKnife;
     lightningThrustSkill.classList.toggle("ready", ready);
     lightningThrustCooldown.textContent = ready ? "" : hasKnife ? Math.ceil(player.lightningThrustTimer) : "K";
+  }
+
+  if (railburstSkill && railburstCooldown) {
+    const ready = player.railburstTimer <= 0 && !player.railburstCharge;
+    railburstSkill.classList.toggle("ready", ready);
+    railburstCooldown.textContent = ready ? "" : player.railburstCharge ? "..." : Math.ceil(player.railburstTimer);
   }
 }
 
@@ -1890,6 +1961,19 @@ function connectMultiplayer() {
           remote.swingDuration = 0.22;
         }
       }
+    } else if (message.type === "railburstCharge") {
+      const remote = remotePlayers.get(message.id);
+      if (remote && message.charge) {
+        remote.railburstCharge = { ...message.charge, startedAt: performance.now() };
+      }
+    } else if (message.type === "railburstFire") {
+      const remote = remotePlayers.get(message.id);
+      if (remote) {
+        remote.railburstCharge = null;
+      }
+      if (message.attack) {
+        addRailburstEffect(message.attack.startX, message.attack.startY, message.attack.endX, message.attack.endY, "#ff9cb5");
+      }
     } else if (message.type === "pickupGranted") {
       applyPickupItem(message.item);
     } else if (message.type === "xpGranted") {
@@ -2049,6 +2133,68 @@ function useLightningThrust() {
     const crate = crates[index];
     if (segmentHitsBox(startX, startY, endX, endY, crate, lightningThrustHitRadius)) {
       damageCrate(index, damage);
+    }
+  }
+
+  return true;
+}
+
+function startRailburst() {
+  if (player.railburstTimer > 0 || player.railburstCharge || deathPending) {
+    return false;
+  }
+
+  const angle = getAimAngle();
+  player.railburstCharge = {
+    startX: player.x,
+    startY: player.y,
+    angle,
+  };
+  player.railburstChargeTimer = railburstChargeSeconds;
+  player.railburstTimer = railburstCooldownSeconds;
+  playTone({ frequency: 180, duration: 0.12, type: "sawtooth", gain: 0.04 });
+  playTone({ frequency: 420, duration: 0.18, type: "triangle", gain: 0.035, when: 0.08 });
+  sendNetwork("state", { state: getPlayerSnapshot() });
+  sendNetwork("railburstCharge", { charge: player.railburstCharge });
+  updateSkillHud();
+  return true;
+}
+
+function fireRailburst(charge = player.railburstCharge, fromNetwork = false) {
+  if (!charge) {
+    return false;
+  }
+
+  const startX = charge.startX;
+  const startY = charge.startY;
+  const angle = charge.angle;
+  const endX = clamp(startX + Math.cos(angle) * railburstRange, 0, world.width);
+  const endY = clamp(startY + Math.sin(angle) * railburstRange, 0, world.height);
+  const damage = getScaledDamage(railburstDamage);
+
+  addRailburstEffect(startX, startY, endX, endY, fromNetwork ? "#ff9cb5" : "#ffdf86");
+  playTone({ frequency: 96, duration: 0.09, type: "sawtooth", gain: 0.07 });
+  playTone({ frequency: 1280, duration: 0.11, type: "square", gain: 0.045, when: 0.02 });
+  playNoise({ duration: 0.18, gain: 0.12, filterFrequency: 1700 });
+
+  if (!fromNetwork && sharedWorldActive) {
+    sendNetwork("state", { state: getPlayerSnapshot() });
+    sendNetwork("railburstFire", {
+      attack: {
+        startX,
+        startY,
+        endX,
+        endY,
+        damage,
+        width: railburstWidth,
+      },
+    });
+  } else if (!fromNetwork) {
+    for (let index = crates.length - 1; index >= 0; index -= 1) {
+      const crate = crates[index];
+      if (segmentHitsBox(startX, startY, endX, endY, crate, railburstWidth / 2)) {
+        damageCrate(index, damage);
+      }
     }
   }
 
@@ -2444,6 +2590,14 @@ function update(delta) {
   player.punchTimer = Math.max(0, player.punchTimer - delta);
   player.knifeSwapTimer = Math.max(0, player.knifeSwapTimer - delta);
   player.lightningThrustTimer = Math.max(0, player.lightningThrustTimer - delta);
+  player.railburstTimer = Math.max(0, player.railburstTimer - delta);
+  if (player.railburstCharge) {
+    player.railburstChargeTimer = Math.max(0, player.railburstChargeTimer - delta);
+    if (player.railburstChargeTimer <= 0) {
+      fireRailburst();
+      player.railburstCharge = null;
+    }
+  }
   if (player.knifeCharging && weapons.slots[weapons.selectedSlot] === "knife") {
     player.knifeCharge = Math.min(player.knifeChargeMax, player.knifeCharge + delta);
   }
@@ -3726,6 +3880,113 @@ function drawLightningEffects() {
   }
 }
 
+function drawRailburstPreview(charge, color = "#ffdf86") {
+  if (!charge) {
+    return;
+  }
+
+  const elapsed = charge.startedAt ? (performance.now() - charge.startedAt) / 1000 : railburstChargeSeconds - player.railburstChargeTimer;
+  const ratio = clamp(elapsed / railburstChargeSeconds, 0, 1);
+  const startX = charge.startX;
+  const startY = charge.startY;
+  const endX = startX + Math.cos(charge.angle) * railburstRange;
+  const endY = startY + Math.sin(charge.angle) * railburstRange;
+  const pulse = 0.45 + ratio * 0.55;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = 0.24 + ratio * 0.48;
+  ctx.strokeStyle = color;
+  ctx.lineCap = "round";
+  ctx.lineWidth = 22 + ratio * 34;
+  ctx.setLineDash([38, 22]);
+  ctx.lineDashOffset = -performance.now() * 0.14;
+  ctx.beginPath();
+  ctx.moveTo(worldToScreenX(startX), worldToScreenY(startY));
+  ctx.lineTo(worldToScreenX(endX), worldToScreenY(endY));
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = `rgba(255, 223, 134, ${0.16 * pulse})`;
+  ctx.beginPath();
+  ctx.arc(worldToScreenX(startX), worldToScreenY(startY), 44 + ratio * 54, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawRailburstEffects() {
+  const now = performance.now();
+
+  drawRailburstPreview(player.railburstCharge);
+  for (const remote of remotePlayers.values()) {
+    drawRailburstPreview(remote.railburstCharge, "#ff9cb5");
+  }
+
+  for (let index = railburstEffects.length - 1; index >= 0; index -= 1) {
+    const effect = railburstEffects[index];
+    const progress = clamp((now - effect.startedAt) / effect.duration, 0, 1);
+
+    if (progress >= 1) {
+      railburstEffects.splice(index, 1);
+      continue;
+    }
+
+    const alpha = 1 - progress;
+    const startX = worldToScreenX(effect.startX);
+    const startY = worldToScreenY(effect.startY);
+    const endX = worldToScreenX(effect.endX);
+    const endY = worldToScreenY(effect.endY);
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.lineCap = "round";
+
+    for (const width of [210, 156, 108, 64, 22, 7]) {
+      ctx.globalAlpha =
+        alpha *
+        (width === 210 ? 0.09 : width === 156 ? 0.22 : width === 108 ? 0.42 : width === 64 ? 0.78 : width === 22 ? 0.9 : 1);
+      ctx.strokeStyle = width === 7 ? "#f5fdff" : width === 22 ? "#fff6b7" : effect.color;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.moveTo(startX, startY);
+      ctx.lineTo(endX, endY);
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 4;
+    ctx.globalAlpha = alpha * 0.82;
+    for (const streak of effect.streaks || []) {
+      ctx.lineWidth = streak.width;
+      ctx.beginPath();
+      ctx.moveTo(worldToScreenX(streak.x1), worldToScreenY(streak.y1));
+      ctx.lineTo(worldToScreenX(streak.x2), worldToScreenY(streak.y2));
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = "#7cd7ff";
+    ctx.lineWidth = 4;
+    ctx.globalAlpha = alpha * 0.86;
+    for (const arc of effect.arcs) {
+      ctx.beginPath();
+      ctx.moveTo(worldToScreenX(arc.x1), worldToScreenY(arc.y1));
+      ctx.lineTo(worldToScreenX(arc.x2), worldToScreenY(arc.y2));
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = `rgba(255, 238, 90, ${alpha * 0.28})`;
+    ctx.beginPath();
+    ctx.arc(endX, endY, 74 + progress * 24, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(124, 215, 255, ${alpha * 0.7})`;
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(endX, endY, 86 + progress * 38, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+}
+
 function drawPlayer(time) {
   const x = worldToScreenX(player.x);
   const y = worldToScreenY(player.y);
@@ -3938,6 +4199,7 @@ function draw(time) {
   drawRemotePlayers(time);
   drawTeleportEffects();
   drawLightningEffects();
+  drawRailburstEffects();
   if (!deathPending) {
     drawPlayer(time);
   }
@@ -4049,6 +4311,11 @@ window.addEventListener("keydown", (event) => {
 
   if (event.key.toLowerCase() === "k") {
     interact();
+    return;
+  }
+
+  if (event.key.toLowerCase() === "q") {
+    startRailburst();
     return;
   }
 

@@ -18,6 +18,8 @@ const crateRespawnMs = 5000;
 const basicCrateHealth = 150;
 const metalCrateHealth = 500;
 const goldCrateHealth = 1000;
+const railburstRange = 1500;
+const railburstMaxDamage = 260;
 const xpDropValue = 38;
 const metalCrateXpValue = 125;
 const goldCrateXpValue = 350;
@@ -402,6 +404,58 @@ function handleLightningThrust(ownerId, attack) {
     type: "lightningThrust",
     id: ownerId,
     attack: { startX, startY, endX, endY, radius, damage },
+  }, ownerId);
+}
+
+function handleRailburst(ownerId, attack) {
+  const owner = clients.get(ownerId);
+
+  if (!owner?.state || !attack) {
+    return;
+  }
+
+  const startX = clamp(Number(attack.startX), 0, world.width);
+  const startY = clamp(Number(attack.startY), 0, world.height);
+  const endX = clamp(Number(attack.endX), 0, world.width);
+  const endY = clamp(Number(attack.endY), 0, world.height);
+  const damage = clamp(Number(attack.damage || 0), 0, railburstMaxDamage);
+  const width = clamp(Number(attack.width || 160), 24, 190);
+  let worldChanged = false;
+
+  if (Math.hypot(startX - owner.state.x, startY - owner.state.y) > 620) {
+    return;
+  }
+
+  if (Math.hypot(endX - startX, endY - startY) > railburstRange + 80 || damage <= 0) {
+    return;
+  }
+
+  for (let index = crates.length - 1; index >= 0; index -= 1) {
+    const crate = crates[index];
+    if (segmentHitsBox(startX, startY, endX, endY, crate, width / 2)) {
+      damageCrate(crate, damage);
+      worldChanged = true;
+    }
+  }
+
+  for (const [targetId, client] of clients) {
+    if (targetId === ownerId || !client.state || client.state.health <= 0) {
+      continue;
+    }
+
+    if (segmentHitsCircle(startX, startY, endX, endY, client.state.x, client.state.y, width / 2 + 24)) {
+      damageClient(targetId, damage, ownerId, getKnockback(damage, endX - startX, endY - startY));
+    }
+  }
+
+  if (worldChanged) {
+    broadcastWorld();
+  }
+
+  broadcast({
+    type: "railburstFire",
+    id: ownerId,
+    attack: { startX, startY, endX, endY, width, damage },
   }, ownerId);
 }
 
@@ -967,6 +1021,21 @@ server.on("upgrade", (request, socket) => {
         broadcast({ type: "melee", id, attack: message.attack }, id);
       } else if (message.type === "lightningThrust") {
         handleLightningThrust(id, message.attack);
+      } else if (message.type === "railburstCharge") {
+        const client = clients.get(id);
+        if (client?.state && message.charge) {
+          broadcast({
+            type: "railburstCharge",
+            id,
+            charge: {
+              startX: clamp(Number(message.charge.startX), 0, world.width),
+              startY: clamp(Number(message.charge.startY), 0, world.height),
+              angle: Number(message.charge.angle || 0),
+            },
+          }, id);
+        }
+      } else if (message.type === "railburstFire") {
+        handleRailburst(id, message.attack);
       } else if (message.type === "dropPickup") {
         const client = clients.get(id);
         const pickup = message.pickup || {};
