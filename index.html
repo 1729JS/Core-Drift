@@ -39,6 +39,17 @@
         </div>
       </div>
     </section>
+    <section class="start-screen hidden" id="restartScreen" aria-label="Game over screen">
+      <div class="start-panel restart-panel">
+        <div class="start-kicker">Run ended</div>
+        <h1>Core Drift</h1>
+        <div class="restart-summary">
+          <span id="restartXp">XP kept 0</span>
+          <span id="restartCoins">Coins kept 0</span>
+        </div>
+        <button class="start-button" id="restartButton" type="button">Play again</button>
+      </div>
+    </section>
     <div class="hud">
       <div class="brand">Core Drift</div>
       <div class="stats">
@@ -76,6 +87,10 @@
       <button class="upgrade-choice" data-upgrade="damage" type="button">
         <span>Damage</span>
         <b data-base="+10%">+10%</b>
+      </button>
+      <button class="upgrade-choice" data-upgrade="reload" type="button">
+        <span>Reload</span>
+        <b data-base="-6%">-6%</b>
       </button>
     </div>
     <div class="leaderboard" id="leaderboard" aria-label="Score leaderboard"></div>
@@ -150,12 +165,6 @@
               <span class="shop-upgrade-bar" aria-hidden="true"><span></span></span>
               <small class="shop-upgrade-level">Lv 0</small>
               <button data-action="upgrade" data-item="knife" data-stat="damage" type="button"></button>
-            </div>
-            <div class="shop-upgrade-row">
-              <span>Stock</span>
-              <span class="shop-upgrade-bar" aria-hidden="true"><span></span></span>
-              <small class="shop-upgrade-level">Lv 0</small>
-              <button data-action="upgrade" data-item="knife" data-stat="mag" type="button"></button>
             </div>
             <div class="shop-upgrade-row">
               <span>Throw Speed</span>
@@ -238,9 +247,63 @@
             </div>
           </div>
         </div>
-        <div class="shop-row">
-          <span>Heal Power</span>
+        <div class="shop-section">Passives</div>
+        <div class="shop-row shop-passive-row">
+          <span class="shop-item-main">
+            <span class="passive-icon passive-icon-heal"></span>
+            <span class="shop-item-copy"><b>Heal Power</b><small>Increase healing received</small></span>
+          </span>
           <button data-action="ability" data-ability="heal" type="button"></button>
+        </div>
+        <div class="shop-row shop-passive-row">
+          <span class="shop-item-main">
+            <span class="passive-icon passive-icon-magnet"></span>
+            <span class="shop-item-copy"><b>Magnet</b><small>Pull nearby drops toward you</small></span>
+          </span>
+          <button data-action="ability" data-ability="magnet" type="button"></button>
+        </div>
+        <div class="shop-section">Skills</div>
+        <div class="shop-row shop-skill-row" data-shop-skill="knifeRecall">
+          <span class="shop-item-main">
+            <span class="equipped-skill-icon skill-icon-knife-recall"></span>
+            <span class="shop-item-copy"><b>Knife Teleport</b><small>Swap places with your thrown knife</small></span>
+          </span>
+          <button data-action="skill" data-skill="knifeRecall" type="button"></button>
+        </div>
+        <div class="shop-row shop-skill-row" data-shop-skill="staticCollapse">
+          <span class="shop-item-main">
+            <span class="equipped-skill-icon skill-icon-static-collapse"></span>
+            <span class="shop-item-copy"><b>Static Collapse</b><small>Mark a delayed electric burst</small></span>
+          </span>
+          <button data-action="skill" data-skill="staticCollapse" type="button"></button>
+        </div>
+        <div class="shop-row shop-skill-row" data-shop-skill="arcPrison">
+          <span class="shop-item-main">
+            <span class="equipped-skill-icon skill-icon-arc-prison"></span>
+            <span class="shop-item-copy"><b>Arc Prison</b><small>Drop a circular shock field</small></span>
+          </span>
+          <button data-action="skill" data-skill="arcPrison" type="button"></button>
+        </div>
+        <div class="shop-row shop-skill-row" data-shop-skill="stormRecall">
+          <span class="shop-item-main">
+            <span class="equipped-skill-icon skill-icon-storm-recall"></span>
+            <span class="shop-item-copy"><b>Storm Recall</b><small>Pulse nearby enemies and loot</small></span>
+          </span>
+          <button data-action="skill" data-skill="stormRecall" type="button"></button>
+        </div>
+        <div class="shop-row shop-skill-row" data-shop-skill="lightningThrust">
+          <span class="shop-item-main">
+            <span class="equipped-skill-icon skill-icon-lightning-thrust"></span>
+            <span class="shop-item-copy"><b>Lightning Thrust</b><small>Dash through with electric blade</small></span>
+          </span>
+          <button data-action="skill" data-skill="lightningThrust" type="button"></button>
+        </div>
+        <div class="shop-row shop-skill-row" data-shop-skill="railburst">
+          <span class="shop-item-main">
+            <span class="equipped-skill-icon skill-icon-railburst"></span>
+            <span class="shop-item-copy"><b>Railburst</b><small>Charge a wide lightning beam</small></span>
+          </span>
+          <button data-action="skill" data-skill="railburst" type="button"></button>
         </div>
       </div>
       <div class="shop-message" id="shopMessage">K near the vendor to trade.</div>
@@ -278,20 +341,33 @@
         <span class="slot-meta" id="awmAmmoStatus"></span>
       </button>
     </div>
-    <div class="skill-slot" id="knifeSwapSkill" aria-label="Knife swap skill">
+    <div class="skill-slot active-skill-slot" id="knifeSwapSkill" data-skill-slot="f" aria-label="F skill">
       <span class="skill-key">F</span>
-      <span class="skill-icon"></span>
+      <button class="skill-clear" data-clear-skill="f" type="button" aria-label="Clear F skill">x</button>
+      <span class="equipped-skill-icon"></span>
+      <span class="skill-name">Knife Teleport</span>
       <span class="skill-cooldown" id="knifeSwapCooldown"></span>
     </div>
-    <div class="skill-slot lightning-slot" id="lightningThrustSkill" aria-label="Lightning thrust skill">
-      <span class="skill-key">G</span>
-      <span class="lightning-icon"></span>
-      <span class="skill-cooldown" id="lightningThrustCooldown"></span>
-    </div>
-    <div class="skill-slot railburst-slot" id="railburstSkill" aria-label="Railburst skill">
+    <div class="skill-slot active-skill-slot" id="skillSlotQ" data-skill-slot="q" aria-label="Q skill">
       <span class="skill-key">Q</span>
-      <span class="railburst-icon"></span>
-      <span class="skill-cooldown" id="railburstCooldown"></span>
+      <button class="skill-clear" data-clear-skill="q" type="button" aria-label="Clear Q skill">x</button>
+      <span class="equipped-skill-icon"></span>
+      <span class="skill-name">Empty</span>
+      <span class="skill-cooldown" id="skillCooldownQ"></span>
+    </div>
+    <div class="skill-slot active-skill-slot" id="skillSlotG" data-skill-slot="g" aria-label="G skill">
+      <span class="skill-key">G</span>
+      <button class="skill-clear" data-clear-skill="g" type="button" aria-label="Clear G skill">x</button>
+      <span class="equipped-skill-icon"></span>
+      <span class="skill-name">Empty</span>
+      <span class="skill-cooldown" id="skillCooldownG"></span>
+    </div>
+    <div class="skill-slot active-skill-slot" id="skillSlotE" data-skill-slot="e" aria-label="E skill">
+      <span class="skill-key">E</span>
+      <button class="skill-clear" data-clear-skill="e" type="button" aria-label="Clear E skill">x</button>
+      <span class="equipped-skill-icon"></span>
+      <span class="skill-name">Empty</span>
+      <span class="skill-cooldown" id="skillCooldownE"></span>
     </div>
     <script>
       window.CORE_DRIFT_GOOGLE_CLIENT_ID = "";

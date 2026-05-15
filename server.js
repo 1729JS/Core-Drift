@@ -10,16 +10,24 @@ const sessionSecret = process.env.SESSION_SECRET || "core-drift-dev-session-secr
 const supabaseUrl = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const clients = new Map();
-const world = { width: 8800, height: 8800 };
-const maxCrates = 40;
-const maxMetalCrates = 20;
-const maxGoldCrates = 10;
+const world = { width: 12000, height: 12000 };
+const crateTiers = {
+  basic: { count: 100, size: 54, hitboxSize: 72, health: 150, xp: 38, coinKind: "bronze", coinValue: 5 },
+  bronze: { count: 60, size: 58, hitboxSize: 100, health: 300, xp: 125, coinKind: "silver", coinValue: 10 },
+  metal: { count: 40, size: 62, hitboxSize: 96, health: 600, xp: 350, coinKind: "gold", coinValue: 100 },
+  gold: { count: 20, size: 74, hitboxSize: 118, health: 900, xp: 1000, coinKind: "gold", coinValue: 150 },
+  royal: { count: 5, size: 84, hitboxSize: 134, health: 1500, xp: 2500, coinKind: "gold", coinValue: 300 },
+};
+const crateTierOrder = ["basic", "bronze", "metal", "gold", "royal"];
 const crateRespawnMs = 5000;
-const basicCrateHealth = 150;
-const metalCrateHealth = 500;
-const goldCrateHealth = 1000;
 const railburstRange = 1500;
 const railburstMaxDamage = 260;
+const staticCollapseDelayMs = 800;
+const staticCollapseMaxRadius = 320;
+const staticCollapseProjectileSpeed = 760;
+const arcPrisonEdgeWidth = 7;
+const arcPrisonSlowMs = 1600;
+const areaSkillMaxDamage = 180;
 const xpDropValue = 38;
 const metalCrateXpValue = 125;
 const goldCrateXpValue = 350;
@@ -33,6 +41,7 @@ const coinValues = {
 const crates = [];
 const pickups = [];
 const bullets = [];
+const staticCollapseProjectiles = [];
 const handledDropIds = new Set();
 let nextEntityId = 1;
 let lastTick = Date.now();
@@ -50,7 +59,7 @@ function clamp(value, min, max) {
 }
 
 function circleHitsBox(circle, box) {
-  const half = box.size / 2;
+  const half = getCrateHitboxSize(box) / 2;
   const closestX = clamp(circle.x, box.x - half, box.x + half);
   const closestY = clamp(circle.y, box.y - half, box.y + half);
   return Math.hypot(circle.x - closestX, circle.y - closestY) <= circle.radius;
@@ -72,7 +81,7 @@ function segmentHitsCircle(x1, y1, x2, y2, cx, cy, radius) {
 }
 
 function segmentHitsBox(x1, y1, x2, y2, box, radius = 0) {
-  const half = box.size / 2 + radius;
+  const half = getCrateHitboxSize(box) / 2 + radius;
   const minX = box.x - half;
   const maxX = box.x + half;
   const minY = box.y - half;
@@ -100,7 +109,7 @@ function segmentHitsBox(x1, y1, x2, y2, box, radius = 0) {
 }
 
 function getBoxHitPoint(circle, box) {
-  const half = box.size / 2;
+  const half = getCrateHitboxSize(box) / 2;
 
   return {
     x: clamp(circle.x, box.x - half, box.x + half),
@@ -108,27 +117,48 @@ function getBoxHitPoint(circle, box) {
   };
 }
 
+function getCrateHitboxSize(crate) {
+  return crate.hitboxSize || crateTiers[crate.kind || "basic"]?.hitboxSize || crate.size;
+}
+
 function getCrateCount(kind) {
   return crates.filter((crate) => (crate.kind || "basic") === kind).length;
 }
 
-function spawnCrate(kind = "basic") {
+function getDistributedSpawnPoint(index, total, size) {
+  const columns = Math.ceil(Math.sqrt(total));
+  const rows = Math.ceil(total / columns);
+  const column = index % columns;
+  const row = Math.floor(index / columns);
+  const cellWidth = world.width / columns;
+  const cellHeight = world.height / rows;
+
+  return {
+    x: clamp((column + 0.18 + Math.random() * 0.64) * cellWidth, size, world.width - size),
+    y: clamp((row + 0.18 + Math.random() * 0.64) * cellHeight, size, world.height - size),
+  };
+}
+
+function spawnCrate(kind = "basic", distributedIndex = null, distributedTotal = 0) {
+  const tier = crateTiers[kind] || crateTiers.basic;
+
   for (let attempt = 0; attempt < 80; attempt += 1) {
-    const isMetal = kind === "metal";
-    const isGold = kind === "gold";
-    const size = isMetal || isGold ? 58 + Math.random() * 18 : 46 + Math.random() * 18;
-    const x = size + Math.random() * (world.width - size * 2);
-    const y = size + Math.random() * (world.height - size * 2);
+    const size = tier.size;
+    const point = Number.isInteger(distributedIndex)
+      ? getDistributedSpawnPoint(distributedIndex, distributedTotal, size)
+      : { x: size + Math.random() * (world.width - size * 2), y: size + Math.random() * (world.height - size * 2) };
+    const { x, y } = point;
 
     crates.push({
       id: nextEntityId++,
       x,
       y,
       size,
+      hitboxSize: tier.hitboxSize,
       kind,
       rotation: Math.random() * Math.PI * 2,
-      hp: isGold ? goldCrateHealth : isMetal ? metalCrateHealth : basicCrateHealth,
-      maxHp: isGold ? goldCrateHealth : isMetal ? metalCrateHealth : basicCrateHealth,
+      hp: tier.health,
+      maxHp: tier.health,
     });
     return;
   }
@@ -154,6 +184,70 @@ function spawnPickup(x, y, forcedType = null, data = {}) {
   });
 }
 
+function getXpDropValues(totalValue) {
+  let remaining = Math.max(0, Math.round(totalValue));
+  const values = [];
+
+  for (const value of [goldCrateXpValue, metalCrateXpValue, xpDropValue]) {
+    while (remaining >= value) {
+      values.push(value);
+      remaining -= value;
+    }
+  }
+
+  if (remaining > 0) {
+    values.push(remaining);
+  }
+
+  return values;
+}
+
+function spawnXpDrops(x, y, totalValue) {
+  const values = getXpDropValues(totalValue);
+
+  values.forEach((value, index) => {
+    const angle = index * 2.399963;
+    const distance = 18 + Math.sqrt(index) * 13;
+    spawnPickup(
+      clamp(x + Math.cos(angle) * distance, 24, world.width - 24),
+      clamp(y + Math.sin(angle) * distance, 24, world.height - 24),
+      "xp",
+      { value },
+    );
+  });
+}
+
+function getCoinDropEntries(totalValue) {
+  let remaining = Math.max(0, Math.round(totalValue));
+  const entries = [];
+
+  for (const [coinKind, value] of [["gold", coinValues.gold], ["silver", coinValues.silver], ["bronze", coinValues.bronze]]) {
+    while (remaining >= value) {
+      entries.push({ coinKind, value });
+      remaining -= value;
+    }
+  }
+
+  if (remaining > 0) {
+    entries.push({ coinKind: "bronze", value: remaining });
+  }
+
+  return entries;
+}
+
+function spawnCoinDrops(x, y, totalValue) {
+  getCoinDropEntries(totalValue).forEach((entry, index) => {
+    const angle = index * 2.399963 + Math.PI / 5;
+    const distance = 18 + Math.sqrt(index) * 13;
+    spawnPickup(
+      clamp(x + Math.cos(angle) * distance, 24, world.width - 24),
+      clamp(y + Math.sin(angle) * distance, 24, world.height - 24),
+      "coin",
+      entry,
+    );
+  });
+}
+
 function cleanupExpiredPickups() {
   const now = Date.now();
   let changed = false;
@@ -172,16 +266,11 @@ function createCrates() {
   crates.length = 0;
   pickups.length = 0;
 
-  while (getCrateCount("basic") < maxCrates) {
-    spawnCrate("basic");
-  }
-
-  while (getCrateCount("metal") < maxMetalCrates) {
-    spawnCrate("metal");
-  }
-
-  while (getCrateCount("gold") < maxGoldCrates) {
-    spawnCrate("gold");
+  for (const kind of crateTierOrder) {
+    const tier = crateTiers[kind];
+    while (getCrateCount(kind) < tier.count) {
+      spawnCrate(kind, getCrateCount(kind), tier.count);
+    }
   }
 }
 
@@ -201,14 +290,14 @@ function getDamageCapacity(state) {
   return Math.max(0, state?.health || 0) + Math.max(0, state?.shield || 0);
 }
 
-function getKnockback(damage, vx, vy) {
+function getKnockback(damage, vx, vy, forceScale = 1) {
   const length = Math.hypot(vx, vy);
 
   if (length <= 0) {
     return null;
   }
 
-  const force = clamp(110 + damage * 3.2, 150, 620);
+  const force = clamp((110 + damage * 3.2) * forceScale, 150, 3600);
   return { vx: (vx / length) * force, vy: (vy / length) * force };
 }
 
@@ -264,8 +353,10 @@ function dropPlayerLoot(state) {
     dropIndex += 1;
   }
 
-  const xpValue = Math.max(25, Math.round((state.level || 1) * 28 + (state.xp || 0) * 0.35));
-  spawnPickup(clamp(state.x + 18, 24, world.width - 24), clamp(state.y - 42, 24, world.height - 24), "xp", { value: xpValue });
+  const xpValue = Math.max(25, Math.round((state.totalXp || 0) * 0.7));
+  spawnXpDrops(state.x + 18, state.y - 42, xpValue);
+  const coinValue = Math.max(0, Math.round((state.coins || 0) * 0.7));
+  spawnCoinDrops(state.x - 18, state.y + 42, coinValue);
 }
 
 function damageClient(targetId, amount, sourceId = null, knockback = null) {
@@ -278,7 +369,14 @@ function damageClient(targetId, amount, sourceId = null, knockback = null) {
   const previousHealth = client.state.health || 0;
   const previousShield = client.state.shield || 0;
   client.state = applyDamageToState(client.state, amount);
-  send(client.socket, { type: "health", health: client.state.health, shield: client.state.shield || 0, knockback });
+  send(client.socket, {
+    type: "health",
+    health: client.state.health,
+    shield: client.state.shield || 0,
+    x: client.state.x,
+    y: client.state.y,
+    knockback,
+  });
   broadcast({ type: "state", id: targetId, state: client.state }, targetId);
 
   if ((client.state.health || 0) < previousHealth || (client.state.shield || 0) < previousShield) {
@@ -304,19 +402,10 @@ function damageCrate(crate, amount) {
   crate.hp -= amount;
 
   if (crate.hp <= 0) {
-    if ((crate.kind || "basic") === "metal") {
-      spawnPickup(crate.x, crate.y);
-      spawnPickup(crate.x + 28, crate.y - 20, "xp", { value: metalCrateXpValue });
-      spawnPickup(crate.x - 28, crate.y + 20, "coin", { coinKind: "silver", value: coinValues.silver });
-    } else if ((crate.kind || "basic") === "gold") {
-      spawnPickup(crate.x, crate.y);
-      spawnPickup(crate.x + 30, crate.y - 22, "xp", { value: goldCrateXpValue });
-      spawnPickup(crate.x - 30, crate.y + 22, "coin", { coinKind: "gold", value: coinValues.gold });
-    } else {
-      spawnPickup(crate.x, crate.y);
-      spawnPickup(crate.x + 26, crate.y - 18, "xp", { value: xpDropValue });
-      spawnPickup(crate.x - 26, crate.y + 18, "coin", { coinKind: "bronze", value: coinValues.bronze });
-    }
+    const tier = crateTiers[crate.kind || "basic"] || crateTiers.basic;
+    spawnPickup(crate.x, crate.y);
+    spawnPickup(crate.x + 28, crate.y - 20, "xp", { value: tier.xp });
+    spawnPickup(crate.x - 28, crate.y + 20, "coin", { coinKind: tier.coinKind, value: tier.coinValue });
     crates.splice(crates.indexOf(crate), 1);
   }
 
@@ -327,8 +416,35 @@ function damageCrate(crate, amount) {
 function handleMelee(ownerId, attack) {
   const owner = clients.get(ownerId);
 
-  if (!owner?.state) {
+  if (!owner?.state || !attack) {
     return;
+  }
+
+  const attackX = clamp(Number(attack.x), 0, world.width);
+  const attackY = clamp(Number(attack.y), 0, world.height);
+  const angle = Number(attack.angle || 0);
+  const range = clamp(Number(attack.range || 0), 0, 140);
+  const arc = clamp(Number(attack.arc || 0), 0, Math.PI * 1.4);
+  const damage = clamp(Number(attack.damage || 0), 0, 260);
+
+  if (Math.hypot(owner.state.x - attackX, owner.state.y - attackY) > 120 || range <= 0 || arc <= 0 || damage <= 0) {
+    return;
+  }
+
+  for (let index = crates.length - 1; index >= 0; index -= 1) {
+    const crate = crates[index];
+    const distance = Math.hypot(crate.x - attackX, crate.y - attackY);
+
+    if (distance > range + getCrateHitboxSize(crate) / 2) {
+      continue;
+    }
+
+    const targetAngle = Math.atan2(crate.y - attackY, crate.x - attackX);
+    const angleDiff = Math.atan2(Math.sin(targetAngle - angle), Math.cos(targetAngle - angle));
+
+    if (Math.abs(angleDiff) <= arc / 2) {
+      damageCrate(crate, damage);
+    }
   }
 
   for (const [targetId, client] of clients) {
@@ -336,17 +452,17 @@ function handleMelee(ownerId, attack) {
       continue;
     }
 
-    const distance = Math.hypot(client.state.x - attack.x, client.state.y - attack.y);
+    const distance = Math.hypot(client.state.x - attackX, client.state.y - attackY);
 
-    if (distance > attack.range + 24) {
+    if (distance > range + 24) {
       continue;
     }
 
-    const targetAngle = Math.atan2(client.state.y - attack.y, client.state.x - attack.x);
-    const angleDiff = Math.atan2(Math.sin(targetAngle - attack.angle), Math.cos(targetAngle - attack.angle));
+    const targetAngle = Math.atan2(client.state.y - attackY, client.state.x - attackX);
+    const angleDiff = Math.atan2(Math.sin(targetAngle - angle), Math.cos(targetAngle - angle));
 
-    if (Math.abs(angleDiff) <= attack.arc / 2) {
-      damageClient(targetId, attack.damage, ownerId);
+    if (Math.abs(angleDiff) <= arc / 2) {
+      damageClient(targetId, damage, ownerId);
     }
   }
 }
@@ -459,6 +575,187 @@ function handleRailburst(ownerId, attack) {
   }, ownerId);
 }
 
+function damageArea(ownerId, x, y, radius, damage, knockbackScale = 1, displacement = 0, falloffKnockback = false) {
+  let worldChanged = false;
+
+  for (let index = crates.length - 1; index >= 0; index -= 1) {
+    const crate = crates[index];
+    if (Math.hypot(crate.x - x, crate.y - y) <= radius + getCrateHitboxSize(crate) / 2) {
+      damageCrate(crate, damage);
+      worldChanged = true;
+    }
+  }
+
+  for (const [targetId, client] of clients) {
+    if (targetId === ownerId || !client.state || client.state.health <= 0) {
+      continue;
+    }
+
+    const distance = Math.hypot(client.state.x - x, client.state.y - y);
+    if (distance <= radius + 24) {
+      const distanceRatio = clamp(distance / Math.max(1, radius), 0, 1);
+      const knockbackRatio = falloffKnockback ? 1.35 - distanceRatio * 0.85 : 1;
+      const scaledDisplacement = displacement * knockbackRatio;
+      if (displacement > 0) {
+        const angle = distance > 0 ? Math.atan2(client.state.y - y, client.state.x - x) : Math.random() * Math.PI * 2;
+        client.state = {
+          ...client.state,
+          x: clamp(client.state.x + Math.cos(angle) * scaledDisplacement, 24, world.width - 24),
+          y: clamp(client.state.y + Math.sin(angle) * scaledDisplacement, 24, world.height - 24),
+        };
+      }
+      damageClient(targetId, damage, ownerId, getKnockback(damage, client.state.x - x, client.state.y - y, knockbackScale * knockbackRatio));
+    }
+  }
+
+  if (worldChanged) {
+    broadcastWorld();
+  }
+}
+
+function handleArcPrison(ownerId, x, y, radius, damage) {
+  let worldChanged = false;
+
+  for (const crate of crates) {
+    const distance = distanceToArcPrisonEdge(crate.x, crate.y, x, y, radius);
+    if (distance <= arcPrisonEdgeWidth + getCrateHitboxSize(crate) / 2) {
+      damageCrate(crate, damage);
+      worldChanged = true;
+    }
+  }
+
+  for (const [targetId, client] of clients) {
+    if (targetId === ownerId || !client.state || client.state.health <= 0) {
+      continue;
+    }
+
+    const edgeDistance = distanceToArcPrisonEdge(client.state.x, client.state.y, x, y, radius);
+    if (edgeDistance <= arcPrisonEdgeWidth + 24) {
+      send(client.socket, { type: "status", status: "arcSlow", duration: arcPrisonSlowMs / 1000, strength: 0.34 });
+      damageClient(targetId, damage, ownerId, getKnockback(damage * 0.65, client.state.x - x, client.state.y - y));
+    }
+  }
+
+  if (worldChanged) {
+    broadcastWorld();
+  }
+}
+
+function distanceToArcPrisonEdge(px, py, cx, cy, radius) {
+  let minDistance = Infinity;
+
+  for (let point = 0; point < 6; point += 1) {
+    const angleA = -Math.PI / 2 + point * Math.PI / 3;
+    const angleB = -Math.PI / 2 + (point + 1) * Math.PI / 3;
+    const ax = cx + Math.cos(angleA) * radius;
+    const ay = cy + Math.sin(angleA) * radius;
+    const bx = cx + Math.cos(angleB) * radius;
+    const by = cy + Math.sin(angleB) * radius;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lengthSq = dx * dx + dy * dy;
+    const t = lengthSq > 0 ? clamp(((px - ax) * dx + (py - ay) * dy) / lengthSq, 0, 1) : 0;
+    const closestX = ax + dx * t;
+    const closestY = ay + dy * t;
+    minDistance = Math.min(minDistance, Math.hypot(px - closestX, py - closestY));
+  }
+
+  return minDistance;
+}
+
+function handleSkill(ownerId, message) {
+  const owner = clients.get(ownerId);
+
+  if (!owner?.state) {
+    return;
+  }
+
+  const skill = message.skill;
+  const x = clamp(Number(message.x), 0, world.width);
+  const y = clamp(Number(message.y), 0, world.height);
+  const radius = clamp(Number(message.radius || 0), 40, staticCollapseMaxRadius);
+  const damage = clamp(Number(message.damage || 0), 0, areaSkillMaxDamage);
+
+  if (Math.hypot(owner.state.x - x, owner.state.y - y) > 1400 && skill !== "stormRecall") {
+    return;
+  }
+
+  if (skill === "staticCollapse") {
+    const startX = clamp(Number(message.startX), 0, world.width);
+    const startY = clamp(Number(message.startY), 0, world.height);
+    const angle = Math.atan2(y - startY, x - startX);
+    const chargeRatio = clamp(Number(message.chargeRatio || 0.18), 0.18, 1);
+    const contactDamage = clamp(Number(message.contactDamage || 0), 0, areaSkillMaxDamage);
+    if (Math.hypot(owner.state.x - startX, owner.state.y - startY) > 120) {
+      return;
+    }
+    const projectile = {
+      ownerId,
+      x: startX,
+      y: startY,
+      vx: Math.cos(angle) * staticCollapseProjectileSpeed,
+      vy: Math.sin(angle) * staticCollapseProjectileSpeed,
+      endX: x,
+      endY: y,
+      radius: 16 + chargeRatio * 8,
+      explosionRadius: radius,
+      damage,
+      contactDamage,
+      chargeRatio,
+      hitCrateIds: new Set(),
+      hitIds: new Set(),
+    };
+    staticCollapseProjectiles.push(projectile);
+    broadcast({ type: "staticCollapseLaunch", id: ownerId, projectile }, ownerId);
+  } else if (skill === "arcPrison") {
+    broadcast({ type: "skillEffect", skill, id: ownerId, x, y, radius }, ownerId);
+    handleArcPrison(ownerId, x, y, radius, damage);
+  } else if (skill === "stormRecall") {
+    broadcast({ type: "skillEffect", skill, id: ownerId, x: owner.state.x, y: owner.state.y, radius }, ownerId);
+    damageArea(ownerId, owner.state.x, owner.state.y, radius, damage, 2.8, 100, true);
+  }
+}
+
+function updateStaticCollapseProjectiles(delta) {
+  for (let index = staticCollapseProjectiles.length - 1; index >= 0; index -= 1) {
+    const projectile = staticCollapseProjectiles[index];
+    const previousX = projectile.x;
+    const previousY = projectile.y;
+    const remaining = Math.hypot(projectile.endX - projectile.x, projectile.endY - projectile.y);
+    const travel = Math.hypot(projectile.vx, projectile.vy) * delta;
+
+    if (travel >= remaining) {
+      projectile.x = projectile.endX;
+      projectile.y = projectile.endY;
+    } else {
+      projectile.x += projectile.vx * delta;
+      projectile.y += projectile.vy * delta;
+    }
+
+    for (const crate of crates) {
+      if (projectile.hitCrateIds.has(crate.id)) continue;
+      if (segmentHitsBox(previousX, previousY, projectile.x, projectile.y, crate, projectile.radius)) {
+        projectile.hitCrateIds.add(crate.id);
+        damageCrate(crate, projectile.contactDamage);
+      }
+    }
+
+    for (const [targetId, client] of clients) {
+      if (targetId === projectile.ownerId || projectile.hitIds.has(targetId) || !client.state || client.state.health <= 0) continue;
+      if (segmentHitsCircle(previousX, previousY, projectile.x, projectile.y, client.state.x, client.state.y, projectile.radius + 24)) {
+        projectile.hitIds.add(targetId);
+        damageClient(targetId, projectile.contactDamage, projectile.ownerId, getKnockback(projectile.contactDamage, projectile.vx, projectile.vy));
+      }
+    }
+
+    if (travel >= remaining) {
+      broadcast({ type: "skillEffect", skill: "staticCollapseBurst", id: projectile.ownerId, x: projectile.endX, y: projectile.endY, radius: projectile.explosionRadius }, projectile.ownerId);
+      setTimeout(() => damageArea(projectile.ownerId, projectile.endX, projectile.endY, projectile.explosionRadius, projectile.damage), staticCollapseDelayMs);
+      staticCollapseProjectiles.splice(index, 1);
+    }
+  }
+}
+
 function updateBullets(delta) {
   let worldChanged = false;
 
@@ -485,6 +782,15 @@ function updateBullets(delta) {
         damageCrate(crate, absorbed);
         bullet.damage -= absorbed;
         worldChanged = true;
+        broadcastToAll({
+          type: "bulletImpact",
+          bulletId: bullet.id,
+          ownerId: bullet.ownerId,
+          x: hitPoint.x,
+          y: hitPoint.y,
+          damage: bullet.damage,
+          spent: bullet.damage <= 0 || absorbed <= 0,
+        });
 
         if (bullet.damage <= 0 || absorbed <= 0) {
           const dropId = bullet.pickup?.dropId || bullet.id;
@@ -504,6 +810,15 @@ function updateBullets(delta) {
       damageCrate(crate, absorbed);
       bullet.damage -= absorbed;
       worldChanged = true;
+      broadcastToAll({
+        type: "bulletImpact",
+        bulletId: bullet.id,
+        ownerId: bullet.ownerId,
+        x: bullet.x,
+        y: bullet.y,
+        damage: bullet.damage,
+        spent: bullet.damage <= 0 || absorbed <= 0,
+      });
 
       if (bullet.damage <= 0 || absorbed <= 0) {
         spent = true;
@@ -605,22 +920,28 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
-    response.writeHead(200, { "Content-Type": mimeTypes[path.extname(filePath)] || "application/octet-stream" });
+    response.writeHead(200, {
+      "Content-Type": mimeTypes[path.extname(filePath)] || "application/octet-stream",
+      "Cache-Control": "no-store",
+    });
     response.end(data);
   });
 });
 
 function encodeFrame(data) {
   const payload = Buffer.from(JSON.stringify(data));
-  const header = payload.length < 126 ? Buffer.alloc(2) : Buffer.alloc(4);
+  const header = payload.length < 126 ? Buffer.alloc(2) : payload.length <= 0xffff ? Buffer.alloc(4) : Buffer.alloc(10);
 
   header[0] = 0x81;
 
   if (payload.length < 126) {
     header[1] = payload.length;
-  } else {
+  } else if (payload.length <= 0xffff) {
     header[1] = 126;
     header.writeUInt16BE(payload.length, 2);
+  } else {
+    header[1] = 127;
+    header.writeBigUInt64BE(BigInt(payload.length), 2);
   }
 
   return Buffer.concat([header, payload]);
@@ -676,6 +997,12 @@ function broadcast(data, exceptId = null) {
     if (id !== exceptId) {
       send(client.socket, data);
     }
+  }
+}
+
+function broadcastToAll(data) {
+  for (const client of clients.values()) {
+    send(client.socket, data);
   }
 }
 
@@ -1036,6 +1363,8 @@ server.on("upgrade", (request, socket) => {
         }
       } else if (message.type === "railburstFire") {
         handleRailburst(id, message.attack);
+      } else if (message.type === "skill") {
+        handleSkill(id, message);
       } else if (message.type === "dropPickup") {
         const client = clients.get(id);
         const pickup = message.pickup || {};
@@ -1060,11 +1389,6 @@ server.on("upgrade", (request, socket) => {
             });
             broadcastWorld();
           }
-        }
-      } else if (message.type === "crateDamage") {
-        const crate = crates.find((candidate) => candidate.id === message.id);
-        if (crate) {
-          damageCrate(crate, Math.max(0, Number(message.damage || 0)));
         }
       } else if (message.type === "pickupRequest") {
         const client = clients.get(id);
@@ -1152,19 +1476,11 @@ server.listen(port, "0.0.0.0", () => {
 });
 
 setInterval(() => {
-  if (getCrateCount("basic") < maxCrates) {
-    spawnCrate("basic");
-    broadcastWorld();
-  }
-
-  if (getCrateCount("metal") < maxMetalCrates) {
-    spawnCrate("metal");
-    broadcastWorld();
-  }
-
-  if (getCrateCount("gold") < maxGoldCrates) {
-    spawnCrate("gold");
-    broadcastWorld();
+  for (const kind of crateTierOrder) {
+    if (getCrateCount(kind) < crateTiers[kind].count) {
+      spawnCrate(kind);
+      broadcastWorld();
+    }
   }
 }, crateRespawnMs);
 
@@ -1179,4 +1495,5 @@ setInterval(() => {
   const delta = Math.min((now - lastTick) / 1000, 0.05);
   lastTick = now;
   updateBullets(delta);
+  updateStaticCollapseProjectiles(delta);
 }, 1000 / 60);

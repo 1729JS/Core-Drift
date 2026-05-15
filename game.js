@@ -2,6 +2,10 @@ const canvas = document.querySelector("#game");
 const ctx = canvas.getContext("2d");
 const startScreen = document.querySelector("#startScreen");
 const startButton = document.querySelector("#startButton");
+const restartScreen = document.querySelector("#restartScreen");
+const restartButton = document.querySelector("#restartButton");
+const restartXp = document.querySelector("#restartXp");
+const restartCoins = document.querySelector("#restartCoins");
 const nicknameInput = document.querySelector("#nicknameInput");
 const coords = document.querySelector("#coords");
 const dashStatus = document.querySelector("#dashStatus");
@@ -15,10 +19,19 @@ const upgradePointsLabel = document.querySelector("#upgradePointsLabel");
 const upgradeButtons = document.querySelectorAll(".upgrade-choice");
 const knifeSwapSkill = document.querySelector("#knifeSwapSkill");
 const knifeSwapCooldown = document.querySelector("#knifeSwapCooldown");
-const lightningThrustSkill = document.querySelector("#lightningThrustSkill");
-const lightningThrustCooldown = document.querySelector("#lightningThrustCooldown");
-const railburstSkill = document.querySelector("#railburstSkill");
-const railburstCooldown = document.querySelector("#railburstCooldown");
+const skillSlotElements = {
+  f: document.querySelector("#knifeSwapSkill"),
+  q: document.querySelector("#skillSlotQ"),
+  g: document.querySelector("#skillSlotG"),
+  e: document.querySelector("#skillSlotE"),
+};
+const skillSlotKeys = ["f", "q", "g", "e"];
+const skillSlotUnlockLevels = {
+  f: 25,
+  g: 50,
+  q: 75,
+  e: 100,
+};
 const leaderboard = document.querySelector("#leaderboard");
 const chatLog = document.querySelector("#chatLog");
 const chatForm = document.querySelector("#chatForm");
@@ -40,14 +53,27 @@ const slot3Icon = document.querySelector("#slot3Icon");
 const slot3Empty = document.querySelector("#slot3Empty");
 const slot3Name = document.querySelector("#slot3Name");
 
-const world = {
-  width: 8800,
-  height: 8800,
+const crateSprites = {
+  basic: createSprite("assets/crates/crate-basic.png"),
+  bronze: createSprite("assets/crates/crate-bronze.png"),
+  metal: createSprite("assets/crates/crate-metal.png"),
+  gold: createSprite("assets/crates/crate-gold.png"),
+  royal: createSprite("assets/crates/crate-royal.png"),
 };
 
-const maxCrates = 40;
-const maxMetalCrates = 20;
-const maxGoldCrates = 10;
+const world = {
+  width: 12000,
+  height: 12000,
+};
+
+const crateTiers = {
+  basic: { count: 100, size: 54, hitboxSize: 72, health: 150, xp: 38, coinKind: "bronze", coinValue: 5 },
+  bronze: { count: 60, size: 58, hitboxSize: 100, health: 300, xp: 125, coinKind: "silver", coinValue: 10 },
+  metal: { count: 40, size: 62, hitboxSize: 96, health: 600, xp: 350, coinKind: "gold", coinValue: 100 },
+  gold: { count: 20, size: 74, hitboxSize: 118, health: 900, xp: 1000, coinKind: "gold", coinValue: 150 },
+  royal: { count: 5, size: 84, hitboxSize: 134, health: 1500, xp: 2500, coinKind: "gold", coinValue: 300 },
+};
+const crateTierOrder = ["basic", "bronze", "metal", "gold", "royal"];
 const crateRespawnSeconds = 5;
 const corpseLifetime = 500;
 const pickupLifetimeMs = 5 * 60 * 1000;
@@ -61,9 +87,25 @@ const railburstChargeSeconds = 0.45;
 const railburstRange = 1500;
 const railburstWidth = 160;
 const railburstDamage = 150;
+const staticCollapseCooldownSeconds = 12;
+const staticCollapseDelay = 0.8;
+const staticCollapseRadius = 260;
+const staticCollapseDamage = 90;
+const staticCollapseProjectileSpeed = 760;
+const staticCollapseContactDamage = 36;
+const staticCollapseChargeMax = 1.4;
+const staticCollapseMinRange = 280;
+const staticCollapseMaxRange = 1240;
+const arcPrisonCooldownSeconds = 16;
+const arcPrisonRadius = 240;
+const arcPrisonDamage = 45;
+const arcPrisonEdgeWidth = 7;
+const arcPrisonSlowSeconds = 1.6;
+const stormRecallCooldownSeconds = 18;
+const stormRecallRadius = 200;
+const stormRecallDamage = 40;
 const chatMessageLifetime = 6500;
 const maxChatMessages = 40;
-const profileStoragePrefix = "core-drift-profile:";
 const accountStorageKey = "core-drift-account";
 const shopDepth = 920;
 const doorHeight = 500;
@@ -78,20 +120,45 @@ const shopNpc = {
   y: world.height / 2,
   radius: 30,
 };
-const magnetRange = 150;
-const magnetSpeed = 360;
+const magnetBaseRange = 105;
+const magnetRangePerLevel = 24;
+const magnetBaseSpeed = 190;
+const magnetSpeedPerLevel = 36;
 const shopPrices = {
   knife: { buy: 50, sell: 25 },
   glock: { buy: 170, sell: 85 },
   awm: { buy: 360, sell: 180 },
 };
 const shopUpgradePrices = {
-  knife: { range: 120, damage: 140, mag: 90, speed: 160 },
+  knife: { range: 120, damage: 140, speed: 160 },
   glock: { range: 180, damage: 240, mag: 220, speed: 260 },
   awm: { range: 280, damage: 360, mag: 320, speed: 420 },
 };
 const shopAbilityPrices = {
   heal: 180,
+  magnet: 260,
+};
+const skillShopPrices = {
+  knifeRecall: 250,
+  staticCollapse: 520,
+  arcPrison: 620,
+  stormRecall: 560,
+  lightningThrust: 650,
+  railburst: 900,
+};
+
+function createSprite(src) {
+  const image = new Image();
+  image.src = src;
+  return image;
+}
+const skillDefinitions = {
+  knifeRecall: { label: "Knife Teleport", cooldown: knifeSwapCooldownSeconds, icon: "skill-icon-knife-recall", requiresKnife: true },
+  staticCollapse: { label: "Static Collapse", cooldown: staticCollapseCooldownSeconds, icon: "skill-icon-static-collapse" },
+  arcPrison: { label: "Arc Prison", cooldown: arcPrisonCooldownSeconds, icon: "skill-icon-arc-prison" },
+  stormRecall: { label: "Storm Recall", cooldown: stormRecallCooldownSeconds, icon: "skill-icon-storm-recall" },
+  lightningThrust: { label: "Lightning Thrust", cooldown: lightningThrustCooldownSeconds, icon: "skill-icon-lightning-thrust", requiresKnife: true },
+  railburst: { label: "Railburst", cooldown: railburstCooldownSeconds, icon: "skill-icon-railburst" },
 };
 
 const baseStats = {
@@ -106,9 +173,8 @@ const baseStats = {
 const xpDropValue = 38;
 const metalCrateXpValue = 125;
 const goldCrateXpValue = 350;
-const basicCrateHealth = 150;
-const metalCrateHealth = 500;
-const goldCrateHealth = 1000;
+const novaXpValue = 1000;
+const astralXpValue = 2500;
 const coinValues = {
   bronze: 5,
   silver: 10,
@@ -119,6 +185,11 @@ const upgradeSteps = {
   dash: { dashSpeed: 90 },
   health: { maxHealth: 25 },
   damage: { damageMultiplier: 0.1 },
+  reload: { reloadReduction: 0.06 },
+};
+const baseReloadTimes = {
+  glock: 3,
+  awm: 5,
 };
 
 const player = {
@@ -144,9 +215,31 @@ const player = {
   knifeSwapTimer: 0,
   lightningThrustTimer: 0,
   lightningThrustActiveTimer: 0,
+  knockbackTimer: 0,
   railburstTimer: 0,
   railburstChargeTimer: 0,
   railburstCharge: null,
+  arcSlowTimer: 0,
+  arcSlowStrength: 1,
+  skillSlots: {
+    f: null,
+    q: null,
+    g: null,
+    e: null,
+  },
+  ownedSkills: [],
+  skillCooldowns: {
+    knifeRecall: 0,
+    staticCollapse: 0,
+    arcPrison: 0,
+    stormRecall: 0,
+    lightningThrust: 0,
+    railburst: 0,
+  },
+  pendingStaticCollapse: [],
+  staticCollapseHeld: false,
+  staticCollapseCharging: false,
+  staticCollapseCharge: 0,
   level: 1,
   xp: 0,
   totalXp: 0,
@@ -158,7 +251,9 @@ const player = {
     dash: 0,
     health: 0,
     heal: 0,
+    magnet: 0,
     damage: 0,
+    reload: 0,
   },
   hurtTimer: 0,
   vx: 0,
@@ -169,6 +264,7 @@ const player = {
   knifeCharge: 0,
   knifeChargeMax: 1.25,
   knifeCharging: false,
+  testMode: false,
 };
 
 const weapons = {
@@ -228,12 +324,15 @@ const camera = {
   x: player.x,
   y: player.y,
   smoothing: 0.12,
+  zoom: 1 / 1.32,
 };
 
 const keys = new Set();
 const bullets = [];
 const crates = [];
 const pickups = [];
+const previewPickups = [];
+const previewCrates = [];
 const mouse = {
   x: window.innerWidth / 2,
   y: window.innerHeight / 2,
@@ -246,6 +345,11 @@ let lastTime = performance.now();
 let crateRegenTimer = crateRespawnSeconds;
 let audioContext = null;
 let draggedSlot = null;
+let draggedSkillSlot = null;
+let weaponPointerDrag = null;
+let weaponDragPreview = null;
+let upgradePanelDrag = null;
+let suppressSlotClick = false;
 let gameStarted = false;
 let deathPending = false;
 let localDeathTimeout = null;
@@ -264,19 +368,39 @@ const corpses = [];
 const teleportEffects = [];
 const lightningEffects = [];
 const railburstEffects = [];
+const staticCollapseEffects = [];
+const staticCollapseProjectiles = [];
+const arcPrisonEffects = [];
+const stormRecallEffects = [];
 const chatMessages = [];
 
 function getCrateCount(kind) {
   return crates.filter((crate) => (crate.kind || "basic") === kind).length;
 }
 
-function spawnCrate(kind = "basic") {
+function getDistributedSpawnPoint(index, total, size) {
+  const columns = Math.ceil(Math.sqrt(total));
+  const rows = Math.ceil(total / columns);
+  const column = index % columns;
+  const row = Math.floor(index / columns);
+  const cellWidth = world.width / columns;
+  const cellHeight = world.height / rows;
+
+  return {
+    x: clamp((column + 0.18 + Math.random() * 0.64) * cellWidth, size, world.width - size),
+    y: clamp((row + 0.18 + Math.random() * 0.64) * cellHeight, size, world.height - size),
+  };
+}
+
+function spawnCrate(kind = "basic", distributedIndex = null, distributedTotal = 0) {
+  const tier = crateTiers[kind] || crateTiers.basic;
+
   for (let attempt = 0; attempt < 80; attempt += 1) {
-    const isMetal = kind === "metal";
-    const isGold = kind === "gold";
-    const size = isMetal || isGold ? 58 + Math.random() * 18 : 46 + Math.random() * 18;
-    const x = size + Math.random() * (world.width - size * 2);
-    const y = size + Math.random() * (world.height - size * 2);
+    const size = tier.size;
+    const point = Number.isInteger(distributedIndex)
+      ? getDistributedSpawnPoint(distributedIndex, distributedTotal, size)
+      : { x: size + Math.random() * (world.width - size * 2), y: size + Math.random() * (world.height - size * 2) };
+    const { x, y } = point;
     const distanceFromPlayer = Math.hypot(x - player.x, y - player.y);
 
     if (distanceFromPlayer < 280) {
@@ -287,10 +411,11 @@ function spawnCrate(kind = "basic") {
       x,
       y,
       size,
+      hitboxSize: tier.hitboxSize,
       kind,
       rotation: Math.random() * Math.PI * 2,
-      hp: isGold ? goldCrateHealth : isMetal ? metalCrateHealth : basicCrateHealth,
-      maxHp: isGold ? goldCrateHealth : isMetal ? metalCrateHealth : basicCrateHealth,
+      hp: tier.health,
+      maxHp: tier.health,
     });
     return true;
   }
@@ -301,20 +426,23 @@ function spawnCrate(kind = "basic") {
 function createCrates() {
   crates.length = 0;
 
-  while (getCrateCount("basic") < maxCrates) {
-    spawnCrate("basic");
-  }
-
-  while (getCrateCount("metal") < maxMetalCrates) {
-    spawnCrate("metal");
-  }
-
-  while (getCrateCount("gold") < maxGoldCrates) {
-    spawnCrate("gold");
+  for (const kind of crateTierOrder) {
+    const tier = crateTiers[kind];
+    while (getCrateCount(kind) < tier.count) {
+      spawnCrate(kind, getCrateCount(kind), tier.count);
+    }
   }
 }
 
-function resetGameState() {
+function resetGameState({ preserveProgress = false } = {}) {
+  const carriedProgress = preserveProgress ? {
+    level: player.level,
+    xp: player.xp,
+    xpToNext: player.xpToNext,
+    totalXp: player.totalXp,
+    upgradePoints: player.upgradePoints,
+    coins: player.coins,
+  } : null;
   if (localDeathTimeout) {
     clearTimeout(localDeathTimeout);
     localDeathTimeout = null;
@@ -335,9 +463,31 @@ function resetGameState() {
   player.knifeSwapTimer = 0;
   player.lightningThrustTimer = 0;
   player.lightningThrustActiveTimer = 0;
+  player.knockbackTimer = 0;
   player.railburstTimer = 0;
   player.railburstChargeTimer = 0;
   player.railburstCharge = null;
+  player.arcSlowTimer = 0;
+  player.arcSlowStrength = 1;
+  player.skillSlots = {
+    f: null,
+    q: null,
+    g: null,
+    e: null,
+  };
+  player.ownedSkills = [];
+  player.skillCooldowns = {
+    knifeRecall: 0,
+    staticCollapse: 0,
+    arcPrison: 0,
+    stormRecall: 0,
+    lightningThrust: 0,
+    railburst: 0,
+  };
+  player.pendingStaticCollapse = [];
+  player.staticCollapseHeld = false;
+  player.staticCollapseCharging = false;
+  player.staticCollapseCharge = 0;
   player.level = 1;
   player.xp = 0;
   player.totalXp = 0;
@@ -349,7 +499,9 @@ function resetGameState() {
     dash: 0,
     health: 0,
     heal: 0,
+    magnet: 0,
     damage: 0,
+    reload: 0,
   };
   player.hurtTimer = 0;
   player.shotTimer = 0;
@@ -357,12 +509,27 @@ function resetGameState() {
   player.punchTimer = 0;
   player.knifeCharge = 0;
   player.knifeCharging = false;
+  player.testMode = false;
+
+  if (carriedProgress) {
+    player.level = carriedProgress.level;
+    player.xp = carriedProgress.xp;
+    player.xpToNext = carriedProgress.xpToNext;
+    player.totalXp = carriedProgress.totalXp;
+    player.upgradePoints = carriedProgress.upgradePoints;
+    player.coins = carriedProgress.coins;
+  }
 
   camera.x = player.x;
   camera.y = player.y;
   bullets.length = 0;
   lightningEffects.length = 0;
   railburstEffects.length = 0;
+  staticCollapseEffects.length = 0;
+  arcPrisonEffects.length = 0;
+  stormRecallEffects.length = 0;
+  previewPickups.length = 0;
+  previewCrates.length = 0;
   if (!sharedWorldActive) {
     pickups.length = 0;
   }
@@ -387,6 +554,7 @@ function resetGameState() {
   weapons.glock.ammo = 0;
   weapons.glock.magAmmo = 0;
   weapons.glock.reloadTimer = 0;
+  weapons.glock.reloadTime = baseReloadTimes.glock;
   weapons.glock.upgrades = { range: 0, damage: 0, mag: 0, speed: 0 };
   weapons.awm.damage = 100;
   weapons.awm.bulletSpeed = 1500;
@@ -395,6 +563,7 @@ function resetGameState() {
   weapons.awm.ammo = 0;
   weapons.awm.magAmmo = 0;
   weapons.awm.reloadTimer = 0;
+  weapons.awm.reloadTime = baseReloadTimes.awm;
   weapons.awm.upgrades = { range: 0, damage: 0, mag: 0, speed: 0 };
 
   crateRegenTimer = crateRespawnSeconds;
@@ -414,6 +583,22 @@ function showStartScreen() {
   gameStarted = false;
   document.body.classList.add("game-pending");
   startScreen.classList.remove("hidden");
+  restartScreen?.classList.add("hidden");
+  updateSkillHud();
+  updateUpgradePanel();
+}
+
+function showRestartScreen() {
+  gameStarted = false;
+  document.body.classList.add("game-pending");
+  startScreen.classList.add("hidden");
+  restartScreen?.classList.remove("hidden");
+  if (restartXp) {
+    restartXp.textContent = `XP kept ${Math.floor(player.totalXp)}`;
+  }
+  if (restartCoins) {
+    restartCoins.textContent = `Coins kept ${Math.floor(player.coins)}`;
+  }
   updateSkillHud();
   updateUpgradePanel();
 }
@@ -439,7 +624,7 @@ function lerpAngle(current, target, amount) {
 }
 
 function circleHitsBox(circle, box) {
-  const half = box.size / 2;
+  const half = getCrateHitboxSize(box) / 2;
   const closestX = clamp(circle.x, box.x - half, box.x + half);
   const closestY = clamp(circle.y, box.y - half, box.y + half);
   return Math.hypot(circle.x - closestX, circle.y - closestY) <= circle.radius;
@@ -461,7 +646,7 @@ function segmentHitsCircle(x1, y1, x2, y2, cx, cy, radius) {
 }
 
 function segmentHitsBox(x1, y1, x2, y2, box, radius = 0) {
-  const half = box.size / 2 + radius;
+  const half = getCrateHitboxSize(box) / 2 + radius;
   const minX = box.x - half;
   const maxX = box.x + half;
   const minY = box.y - half;
@@ -489,12 +674,38 @@ function segmentHitsBox(x1, y1, x2, y2, box, radius = 0) {
 }
 
 function getBoxHitPoint(circle, box) {
-  const half = box.size / 2;
+  const half = getCrateHitboxSize(box) / 2;
 
   return {
     x: clamp(circle.x, box.x - half, box.x + half),
     y: clamp(circle.y, box.y - half, box.y + half),
   };
+}
+
+function getCrateHitboxSize(crate) {
+  return crate.hitboxSize || crateTiers[crate.kind || "basic"]?.hitboxSize || crate.size;
+}
+
+function distanceToArcPrisonEdge(px, py, cx, cy, radius) {
+  let minDistance = Infinity;
+
+  for (let point = 0; point < 6; point += 1) {
+    const angleA = -Math.PI / 2 + point * Math.PI / 3;
+    const angleB = -Math.PI / 2 + (point + 1) * Math.PI / 3;
+    const ax = cx + Math.cos(angleA) * radius;
+    const ay = cy + Math.sin(angleA) * radius;
+    const bx = cx + Math.cos(angleB) * radius;
+    const by = cy + Math.sin(angleB) * radius;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lengthSq = dx * dx + dy * dy;
+    const t = lengthSq > 0 ? clamp(((px - ax) * dx + (py - ay) * dy) / lengthSq, 0, 1) : 0;
+    const closestX = ax + dx * t;
+    const closestY = ay + dy * t;
+    minDistance = Math.min(minDistance, Math.hypot(px - closestX, py - closestY));
+  }
+
+  return minDistance;
 }
 
 function getPlayerDamageCapacity() {
@@ -622,7 +833,96 @@ function getScaledDamage(baseDamage) {
 }
 
 function getDeathXpDrop() {
-  return Math.max(25, Math.round(player.level * 28 + player.xp * 0.35));
+  return Math.max(25, Math.round(player.totalXp * 0.7));
+}
+
+function getDeathCoinDrop() {
+  return Math.max(0, Math.round(player.coins * 0.7));
+}
+
+function setProgressFromTotalXp(totalXp) {
+  let remaining = Math.max(0, Math.round(totalXp));
+  let level = 1;
+  let xpToNext = 100;
+
+  while (remaining >= xpToNext) {
+    remaining -= xpToNext;
+    level += 1;
+    xpToNext = Math.round(100 + (level - 1) * 55);
+  }
+
+  player.level = level;
+  player.xp = remaining;
+  player.xpToNext = xpToNext;
+  player.totalXp = Math.max(0, Math.round(totalXp));
+  player.upgradePoints = Math.max(0, level - 1);
+}
+
+function getXpDropValues(totalValue) {
+  let remaining = Math.max(0, Math.round(totalValue));
+  const values = [];
+
+  for (const value of [goldCrateXpValue, metalCrateXpValue, xpDropValue]) {
+    while (remaining >= value) {
+      values.push(value);
+      remaining -= value;
+    }
+  }
+
+  if (remaining > 0) {
+    values.push(remaining);
+  }
+
+  return values;
+}
+
+function getCoinDropEntries(totalValue) {
+  let remaining = Math.max(0, Math.round(totalValue));
+  const entries = [];
+
+  for (const [coinKind, value] of [["gold", coinValues.gold], ["silver", coinValues.silver], ["bronze", coinValues.bronze]]) {
+    while (remaining >= value) {
+      entries.push({ coinKind, value });
+      remaining -= value;
+    }
+  }
+
+  if (remaining > 0) {
+    entries.push({ coinKind: "bronze", value: remaining });
+  }
+
+  return entries;
+}
+
+function spawnXpTierPreviews() {
+  previewPickups.length = 0;
+  [xpDropValue, metalCrateXpValue, goldCrateXpValue, novaXpValue, astralXpValue].forEach((value, index) => {
+    previewPickups.push({
+      x: player.x - 144 + index * 72,
+      y: player.y - 92,
+      type: "xp",
+      value,
+      radius: 18,
+      bob: Math.random() * Math.PI * 2,
+      preview: true,
+    });
+  });
+}
+
+function spawnCrateTierPreviews() {
+  previewCrates.length = 0;
+  crateTierOrder.forEach((kind, index) => {
+    previewCrates.push({
+      x: player.x - 176 + index * 88,
+      y: player.y + 112,
+      size: crateTiers[kind].size,
+      kind,
+      rotation: kind === "basic" ? -0.2 : -0.16,
+      hp: 1,
+      maxHp: 1,
+      preview: true,
+    });
+  });
 }
 
 function gainXp(amount) {
@@ -639,6 +939,8 @@ function gainXp(amount) {
 
   updateXpHud();
   updateLeaderboard();
+  updateSkillHud();
+  updateShopHud();
   sendNetwork("state", { state: getPlayerSnapshot() });
   updateUpgradePanel();
 }
@@ -673,8 +975,19 @@ function applyUpgrade(type) {
     player.damageMultiplier = Number((player.damageMultiplier + step.damageMultiplier).toFixed(2));
   }
 
+  if (step.reloadReduction) {
+    updateReloadTimes();
+  }
+
   updateXpHud();
   updateUpgradePanel();
+}
+
+function updateReloadTimes() {
+  const reloadLevel = player.upgrades.reload || 0;
+  const multiplier = Math.max(0.5, 1 - reloadLevel * upgradeSteps.reload.reloadReduction);
+  weapons.glock.reloadTime = Number((baseReloadTimes.glock * multiplier).toFixed(2));
+  weapons.awm.reloadTime = Number((baseReloadTimes.awm * multiplier).toFixed(2));
 }
 
 function updateXpHud() {
@@ -714,7 +1027,7 @@ function updateShopHud() {
     const level = weapons[item]?.upgrades?.[stat] || 0;
     const price = getUpgradePrice(item, stat);
     const row = button.closest(".shop-upgrade-row");
-    row?.style.setProperty("--upgrade-level", Math.min(level, 10));
+    renderUpgradeBar(row, level);
     const levelLabel = row?.querySelector(".shop-upgrade-level");
 
     if (levelLabel) {
@@ -729,6 +1042,50 @@ function updateShopHud() {
     const level = player.upgrades[ability] || 0;
     const price = getAbilityPrice(ability);
     button.textContent = `Lv ${level} | Buy ${price}`;
+  });
+
+  shopPanel?.querySelectorAll(".shop-skill-row").forEach((row) => {
+    const skill = row.dataset.shopSkill;
+    const owned = player.ownedSkills.includes(skill);
+    const equipped = Object.values(player.skillSlots).includes(skill);
+    const skillsUnlocked = hasAnyUnlockedSkillSlot();
+
+    row.classList.toggle("owned", owned);
+    row.classList.toggle("equipped", equipped);
+    row.classList.toggle("locked", !skillsUnlocked);
+    row.setAttribute(
+      "title",
+      !skillsUnlocked
+        ? "Unlock your first skill slot at Lv 25"
+        : owned
+        ? equipped
+          ? "Already equipped"
+          : "Click to equip this skill to an empty slot"
+        : "Buy this skill first"
+    );
+  });
+
+  shopPanel?.querySelectorAll("button[data-action='skill']").forEach((button) => {
+    const skill = button.dataset.skill;
+    const owned = player.ownedSkills.includes(skill);
+    const skillsUnlocked = hasAnyUnlockedSkillSlot();
+    button.textContent = owned ? "Owned" : skillsUnlocked ? `Buy ${skillShopPrices[skill] || 9999}` : "Lv 25";
+    button.disabled = owned || !skillsUnlocked;
+  });
+}
+
+function renderUpgradeBar(row, level) {
+  const bar = row?.querySelector(".shop-upgrade-bar");
+  if (!bar) {
+    return;
+  }
+
+  if (bar.children.length !== 10) {
+    bar.innerHTML = Array.from({ length: 10 }, () => "<span></span>").join("");
+  }
+
+  [...bar.children].forEach((pip, index) => {
+    pip.classList.toggle("filled", index < Math.min(level, 10));
   });
 }
 
@@ -800,9 +1157,45 @@ function submitChat() {
     chatInput.blur();
   }
 
+  if (text === "!@#") {
+    activateTestMode();
+    return;
+  }
+
   const payload = { name: player.name || "Player", text };
   addChatMessage({ ...payload, id: localClientId, local: true });
   sendNetwork("chat", payload);
+}
+
+function activateTestMode() {
+  // TODO: Remove this test shortcut before public launch.
+  player.testMode = true;
+  player.coins = 100000;
+  player.level = 100;
+  player.xp = 0;
+  player.xpToNext = Math.round(100 + (player.level - 1) * 55);
+  player.totalXp = Math.max(player.totalXp, 100000);
+  player.upgradePoints = Math.max(player.upgradePoints, 99);
+
+  weapons.selectedSlot = 1;
+  weapons.slots[1] = "knife";
+  weapons.slots[2] = "glock";
+  weapons.slots[3] = "awm";
+  weapons.knife.count = 1000;
+  weapons.glock.magAmmo = weapons.glock.magazineSize;
+  weapons.glock.ammo = 1000;
+  weapons.glock.reloadTimer = 0;
+  weapons.awm.magAmmo = weapons.awm.magazineSize;
+  weapons.awm.ammo = 1000;
+  weapons.awm.reloadTimer = 0;
+
+  updateCoinHud();
+  updateXpHud();
+  updateInventory();
+  updateUpgradePanel();
+  updateLeaderboard();
+  addChatMessage({ name: "System", text: "Test mode activated.", local: true });
+  sendNetwork("state", { state: getPlayerSnapshot() });
 }
 
 function decodeJwtPayload(token) {
@@ -814,10 +1207,6 @@ function decodeJwtPayload(token) {
   } catch {
     return null;
   }
-}
-
-function getProfileKey() {
-  return `${profileStoragePrefix}${activeAccount?.id || "guest"}`;
 }
 
 function updateAccountUi() {
@@ -890,6 +1279,8 @@ function captureCharacterProfile() {
     maxHealth: player.maxHealth,
     health: Math.max(1, player.health),
     shield: player.shield,
+    skillSlots: { ...player.skillSlots },
+    ownedSkills: [...player.ownedSkills],
     healAmount: player.healAmount,
     damageMultiplier: player.damageMultiplier,
     upgrades: { ...player.upgrades },
@@ -944,9 +1335,17 @@ function applyCharacterProfile(profile) {
   player.maxHealth = profile.maxHealth || baseStats.maxHealth;
   player.health = Math.min(profile.health || player.maxHealth, player.maxHealth);
   player.shield = Math.min(profile.shield || 0, player.maxShield);
+  player.skillSlots = { ...player.skillSlots, ...(profile.skillSlots || {}) };
+  player.ownedSkills = profile.ownedSkills || player.ownedSkills;
+  for (const slotKey of skillSlotKeys) {
+    if (!isSkillSlotUnlocked(slotKey)) {
+      player.skillSlots[slotKey] = null;
+    }
+  }
   player.healAmount = profile.healAmount || baseStats.healAmount;
   player.damageMultiplier = profile.damageMultiplier || baseStats.damageMultiplier;
   player.upgrades = { ...player.upgrades, ...(profile.upgrades || {}) };
+  updateReloadTimes();
 
   weapons.selectedSlot = profile.selectedSlot || 1;
   weapons.slots = { ...weapons.slots, ...(profile.slots || {}) };
@@ -969,33 +1368,27 @@ function applyCharacterProfile(profile) {
 }
 
 async function loadCharacterProfile() {
-  if (activeAccount?.token) {
-    try {
-      const response = await fetch("/api/profile", {
-        headers: { Authorization: `Bearer ${activeAccount.token}` },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        activeAccount.serverStorage = Boolean(data.serverStorage);
-        localStorage.setItem(accountStorageKey, JSON.stringify(activeAccount));
-        updateAccountUi();
-        if (data.profile) {
-          applyCharacterProfile(data.profile);
-          return;
-        }
-      }
-    } catch {
-      activeAccount.serverStorage = false;
-      updateAccountUi();
-    }
+  if (!activeAccount?.token) {
+    return;
   }
 
   try {
-    const saved = JSON.parse(localStorage.getItem(getProfileKey()) || "null");
-    applyCharacterProfile(saved);
+    const response = await fetch("/api/profile", {
+      headers: { Authorization: `Bearer ${activeAccount.token}` },
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      activeAccount.serverStorage = Boolean(data.serverStorage);
+      localStorage.setItem(accountStorageKey, JSON.stringify(activeAccount));
+      updateAccountUi();
+      if (data.profile) {
+        applyCharacterProfile(data.profile);
+      }
+    }
   } catch {
-    localStorage.removeItem(getProfileKey());
+    activeAccount.serverStorage = false;
+    updateAccountUi();
   }
 }
 
@@ -1005,7 +1398,6 @@ async function saveCharacterProfile() {
   }
 
   const profile = captureCharacterProfile();
-  localStorage.setItem(getProfileKey(), JSON.stringify(profile));
 
   if (activeAccount?.token) {
     try {
@@ -1021,20 +1413,67 @@ async function saveCharacterProfile() {
 }
 
 function saveRespawnProfileAfterDeath() {
+  resetDeathProgressState();
   const profile = captureCharacterProfile();
-  profile.health = profile.maxHealth;
-  profile.shield = 0;
-  profile.selectedSlot = 1;
-  profile.slots = { 1: "knife", 2: null, 3: null };
-  profile.weapons.knife.count = 1;
-  profile.weapons.glock.ammo = 0;
-  profile.weapons.glock.magAmmo = 0;
-  profile.weapons.awm.ammo = 0;
-  profile.weapons.awm.magAmmo = 0;
-  localStorage.setItem(getProfileKey(), JSON.stringify(profile));
   if (activeAccount?.token) {
     postJson("/api/profile", { profile }, activeAccount.token).catch(() => {});
   }
+}
+
+function resetDeathProgressState() {
+  const keptCoins = Math.max(0, player.coins - getDeathCoinDrop());
+  const keptTotalXp = Math.max(0, Math.round(player.totalXp * 0.3));
+  player.coins = keptCoins;
+  setProgressFromTotalXp(keptTotalXp);
+  player.maxSpeed = baseStats.maxSpeed;
+  player.acceleration = baseStats.acceleration;
+  player.dashSpeed = baseStats.dashSpeed;
+  player.maxHealth = baseStats.maxHealth;
+  player.health = player.maxHealth;
+  player.shield = 0;
+  player.healAmount = baseStats.healAmount;
+  player.damageMultiplier = baseStats.damageMultiplier;
+  player.upgrades = {
+    speed: 0,
+    dash: 0,
+    health: 0,
+    heal: 0,
+    magnet: 0,
+    damage: 0,
+    reload: 0,
+  };
+
+  weapons.selectedSlot = 1;
+  weapons.slots[1] = "knife";
+  weapons.slots[2] = null;
+  weapons.slots[3] = null;
+  weapons.knife.count = 1;
+  weapons.knife.damage = 25;
+  weapons.knife.range = 82;
+  weapons.knife.throwLifeBonus = 0;
+  weapons.knife.throwSpeedBonus = 0;
+  weapons.knife.upgrades = { range: 0, damage: 0, mag: 0, speed: 0 };
+  weapons.glock.damage = 50;
+  weapons.glock.bulletSpeed = 880;
+  weapons.glock.bulletLife = 1.2;
+  weapons.glock.magazineSize = 17;
+  weapons.glock.ammo = 0;
+  weapons.glock.magAmmo = 0;
+  weapons.glock.reloadTimer = 0;
+  weapons.glock.reloadTime = baseReloadTimes.glock;
+  weapons.glock.upgrades = { range: 0, damage: 0, mag: 0, speed: 0 };
+  weapons.awm.damage = 100;
+  weapons.awm.bulletSpeed = 1500;
+  weapons.awm.bulletLife = 4;
+  weapons.awm.magazineSize = 6;
+  weapons.awm.ammo = 0;
+  weapons.awm.magAmmo = 0;
+  weapons.awm.reloadTimer = 0;
+  weapons.awm.reloadTime = baseReloadTimes.awm;
+  weapons.awm.upgrades = { range: 0, damage: 0, mag: 0, speed: 0 };
+  updateInventory();
+  updateXpHud();
+  updateUpgradePanel();
 }
 
 async function initAccountSystem() {
@@ -1145,31 +1584,55 @@ function updateLeaderboard() {
     })),
   ]
     .sort((a, b) => b.score - a.score)
-    .slice(0, 5);
+    .slice(0, 10);
 
   leaderboard.innerHTML = `<div class="leaderboard-title">Ranking</div>${rows
     .map((row, index) => `<div class="leaderboard-row"><span>${index + 1}. ${escapeHtml(row.name)}</span><b>${Math.floor(row.score)}</b></div>`)
     .join("")}`;
 }
 
+function isKnifeSkillUsable(skill) {
+  return !skillDefinitions[skill]?.requiresKnife || (weapons.slots[weapons.selectedSlot] === "knife" && weapons.knife.count > 0);
+}
+
 function updateSkillHud() {
-  if (knifeSwapSkill && knifeSwapCooldown) {
-    const ready = player.knifeSwapTimer <= 0;
-    knifeSwapSkill.classList.toggle("ready", ready);
-    knifeSwapCooldown.textContent = ready ? "" : Math.ceil(player.knifeSwapTimer);
-  }
+  for (const slotKey of skillSlotKeys) {
+    const element = skillSlotElements[slotKey];
+    const skill = player.skillSlots[slotKey];
+    const definition = skillDefinitions[skill];
+    const unlocked = isSkillSlotUnlocked(slotKey);
+    const unlockLevel = skillSlotUnlockLevels[slotKey];
 
-  if (lightningThrustSkill && lightningThrustCooldown) {
-    const hasKnife = weapons.slots[weapons.selectedSlot] === "knife";
-    const ready = player.lightningThrustTimer <= 0 && hasKnife;
-    lightningThrustSkill.classList.toggle("ready", ready);
-    lightningThrustCooldown.textContent = ready ? "" : hasKnife ? Math.ceil(player.lightningThrustTimer) : "K";
-  }
+    if (!element) {
+      continue;
+    }
 
-  if (railburstSkill && railburstCooldown) {
-    const ready = player.railburstTimer <= 0 && !player.railburstCharge;
-    railburstSkill.classList.toggle("ready", ready);
-    railburstCooldown.textContent = ready ? "" : player.railburstCharge ? "..." : Math.ceil(player.railburstTimer);
+    const icon = element.querySelector(".equipped-skill-icon");
+    const name = element.querySelector(".skill-name");
+    const cooldown = element.querySelector(".skill-cooldown");
+    const clearButton = element.querySelector(".skill-clear");
+    const cooldownValue = skill ? player.skillCooldowns[skill] || 0 : 0;
+    const charging = (skill === "railburst" && player.railburstCharge) || (skill === "staticCollapse" && player.staticCollapseHeld);
+    const knifeLocked = Boolean(skill && definition?.requiresKnife && !isKnifeSkillUsable(skill));
+
+    element.classList.toggle("ready", Boolean(unlocked && skill && cooldownValue <= 0 && !charging && !knifeLocked));
+    element.classList.toggle("empty", !skill);
+    element.classList.toggle("level-locked", !unlocked);
+    element.classList.toggle("knife-locked", knifeLocked);
+    element.setAttribute("aria-label", `${slotKey.toUpperCase()} skill ${unlocked ? definition?.label || "Empty" : `Locked until level ${unlockLevel}`}`);
+    element.draggable = Boolean(unlocked && skill);
+    if (icon) {
+      icon.className = `equipped-skill-icon ${definition?.icon || ""}`;
+    }
+    if (name) {
+      name.textContent = unlocked ? definition?.label || "Empty" : `Lv ${unlockLevel}`;
+    }
+    if (cooldown) {
+      cooldown.textContent = !unlocked || !skill ? "" : knifeLocked ? "Only Knife" : charging ? "..." : cooldownValue > 0 ? Math.ceil(cooldownValue) : "";
+    }
+    if (clearButton) {
+      clearButton.classList.toggle("hidden", !unlocked || !skill);
+    }
   }
 }
 
@@ -1212,12 +1675,16 @@ function openShop() {
   }
 
   shopPanel.classList.remove("hidden");
+  document.body.classList.add("shop-open");
   updateShopHud();
+  updateSkillHud();
   setShopMessage("Choose an item or upgrade.");
 }
 
 function closeShop() {
   shopPanel?.classList.add("hidden");
+  document.body.classList.remove("shop-open");
+  updateSkillHud();
 }
 
 function isShopOpen() {
@@ -1240,6 +1707,20 @@ function getAbilityPrice(ability) {
   const base = shopAbilityPrices[ability] || 9999;
   const level = player.upgrades[ability] || 0;
   return Math.round(base * (1 + level * 0.7));
+}
+
+function getPassiveMagnetLevel() {
+  return player.upgrades.magnet || 0;
+}
+
+function getPassiveMagnetRange() {
+  const level = getPassiveMagnetLevel();
+  return level > 0 ? magnetBaseRange + (level - 1) * magnetRangePerLevel : 0;
+}
+
+function getPassiveMagnetSpeed() {
+  const level = getPassiveMagnetLevel();
+  return level > 0 ? magnetBaseSpeed + (level - 1) * magnetSpeedPerLevel : 0;
 }
 
 function getTradeUnit(item) {
@@ -1317,7 +1798,7 @@ function buyShopItem(item) {
 function buyWeaponUpgrade(item, stat) {
   const price = getUpgradePrice(item, stat);
 
-  if (!weapons[item]?.upgrades || player.coins < price) {
+  if (!shopUpgradePrices[item]?.[stat] || !weapons[item]?.upgrades || player.coins < price) {
     setShopMessage("Not enough coins.");
     return;
   }
@@ -1341,13 +1822,9 @@ function buyWeaponUpgrade(item, stat) {
       weapons[item].bulletSpeed += item === "awm" ? 110 : 70;
     }
   } else if (stat === "mag") {
-    if (item === "knife") {
-      weapons.knife.count += 1;
-    } else {
-      const increase = item === "awm" ? 1 : 3;
-      weapons[item].magazineSize += increase;
-      weapons[item].ammo += increase;
-    }
+    const increase = item === "awm" ? 1 : 3;
+    weapons[item].magazineSize += increase;
+    weapons[item].ammo += increase;
   }
 
   updateInventory();
@@ -1371,7 +1848,128 @@ function buyAbilityUpgrade(ability) {
     updateCoinHud();
     updateShopHud();
     setShopMessage("Heal Power upgraded.");
+  } else if (ability === "magnet") {
+    player.coins -= price;
+    player.upgrades.magnet += 1;
+    updateCoinHud();
+    updateShopHud();
+    setShopMessage("Magnet upgraded.");
   }
+}
+
+function getSkillSlotForSkill(skill) {
+  return skillSlotKeys.find((candidate) => player.skillSlots[candidate] === skill) || null;
+}
+
+function isSkillSlotUnlocked(slotKey) {
+  return player.level >= (skillSlotUnlockLevels[slotKey] || Infinity);
+}
+
+function hasAnyUnlockedSkillSlot() {
+  return skillSlotKeys.some((slotKey) => isSkillSlotUnlocked(slotKey));
+}
+
+function getEmptySkillSlot() {
+  return skillSlotKeys.find((candidate) => isSkillSlotUnlocked(candidate) && !player.skillSlots[candidate]) || null;
+}
+
+function equipSkill(skill) {
+  if (!hasAnyUnlockedSkillSlot()) {
+    setShopMessage("Unlock your first skill slot at Lv 25.");
+    return null;
+  }
+
+  if (!player.ownedSkills.includes(skill)) {
+    setShopMessage("Buy this skill first.");
+    return null;
+  }
+
+  const existingSlot = getSkillSlotForSkill(skill);
+  if (existingSlot) {
+    setShopMessage(`${skillDefinitions[skill].label} is already on ${existingSlot.toUpperCase()}.`);
+    return existingSlot;
+  }
+
+  const slot = getEmptySkillSlot();
+  if (!slot) {
+    setShopMessage("Clear a skill slot first.");
+    return null;
+  }
+
+  player.skillSlots[slot] = skill;
+  updateSkillHud();
+  updateShopHud();
+  return slot;
+}
+
+function clearSkillSlot(slotKey) {
+  if (!isSkillSlotUnlocked(slotKey)) {
+    return;
+  }
+
+  if (!player.skillSlots[slotKey]) {
+    return;
+  }
+
+  player.skillSlots[slotKey] = null;
+  updateSkillHud();
+  updateShopHud();
+}
+
+function swapSkillSlots(fromSlot, toSlot) {
+  if (!isSkillSlotUnlocked(fromSlot) || !isSkillSlotUnlocked(toSlot)) {
+    return;
+  }
+
+  if (!fromSlot || !toSlot || fromSlot === toSlot) {
+    return;
+  }
+
+  const fromSkill = player.skillSlots[fromSlot];
+  player.skillSlots[fromSlot] = player.skillSlots[toSlot];
+  player.skillSlots[toSlot] = fromSkill;
+  updateSkillHud();
+  updateShopHud();
+}
+
+function handleShopSkillClick(skill) {
+  if (!skillDefinitions[skill]) {
+    return;
+  }
+
+  if (!player.ownedSkills.includes(skill)) {
+    setShopMessage("Buy this skill first.");
+    return;
+  }
+
+  const slot = equipSkill(skill);
+  if (slot) {
+    setShopMessage(`${skillDefinitions[skill].label} equipped to ${slot.toUpperCase()}.`);
+  }
+}
+
+function buyShopSkill(skill) {
+  const price = skillShopPrices[skill];
+
+  if (!price || !skillDefinitions[skill]) {
+    return;
+  }
+
+  if (player.ownedSkills.includes(skill)) {
+    setShopMessage("Skill already owned.");
+    return;
+  }
+
+  if (player.coins < price) {
+    setShopMessage("Not enough coins.");
+    return;
+  }
+
+  player.coins -= price;
+  player.ownedSkills.push(skill);
+  updateCoinHud();
+  updateShopHud();
+  setShopMessage(`${skillDefinitions[skill].label} purchased. Click its icon to equip.`);
 }
 
 function sellShopItem(item) {
@@ -1429,37 +2027,36 @@ function updateUpgradePanel() {
   upgradePanel.classList.toggle("hidden", !gameStarted || player.upgradePoints <= 0);
 }
 
+function placeUpgradePanel(left, top) {
+  if (!upgradePanel) {
+    return;
+  }
+
+  const width = upgradePanel.offsetWidth || 190;
+  const height = upgradePanel.offsetHeight || 220;
+  const nextLeft = clamp(left, 8, window.innerWidth - width - 8);
+  const nextTop = clamp(top, 8, window.innerHeight - height - 8);
+
+  upgradePanel.style.left = `${nextLeft}px`;
+  upgradePanel.style.top = `${nextTop}px`;
+  upgradePanel.style.right = "auto";
+}
+
 function damageCrate(index, damage) {
   const crate = crates[index];
   const destroyed = crate && crate.hp - damage <= 0;
 
-  if (sharedWorldActive && crate?.id) {
-    sendNetwork("crateDamage", { id: crate.id, damage });
-    crate.hp -= damage;
-
-    if (crate.hp <= 0) {
-      crates.splice(index, 1);
-    }
-
-    return true;
+  if (sharedWorldActive) {
+    return Boolean(destroyed);
   }
 
   crate.hp -= damage;
 
   if (crate.hp <= 0) {
-    if ((crate.kind || "basic") === "metal") {
-      spawnPickup(crate.x, crate.y);
-      spawnPickup(crate.x + 28, crate.y - 20, "xp", { value: metalCrateXpValue });
-      spawnPickup(crate.x - 28, crate.y + 20, "coin", { coinKind: "silver", value: coinValues.silver });
-    } else if ((crate.kind || "basic") === "gold") {
-      spawnPickup(crate.x, crate.y);
-      spawnPickup(crate.x + 30, crate.y - 22, "xp", { value: goldCrateXpValue });
-      spawnPickup(crate.x - 30, crate.y + 22, "coin", { coinKind: "gold", value: coinValues.gold });
-    } else {
-      spawnPickup(crate.x, crate.y);
-      spawnPickup(crate.x + 26, crate.y - 18, "xp", { value: xpDropValue });
-      spawnPickup(crate.x - 26, crate.y + 18, "coin", { coinKind: "bronze", value: coinValues.bronze });
-    }
+    const tier = crateTiers[crate.kind || "basic"] || crateTiers.basic;
+    spawnPickup(crate.x, crate.y);
+    spawnPickup(crate.x + 28, crate.y - 20, "xp", { value: tier.xp });
+    spawnPickup(crate.x - 28, crate.y + 20, "coin", { coinKind: tier.coinKind, value: tier.coinValue });
     crates.splice(index, 1);
     playCrateBreakSound();
     return true;
@@ -1548,8 +2145,7 @@ function handleLocalDeath() {
 
   localDeathTimeout = setTimeout(() => {
     localDeathTimeout = null;
-    showStartScreen();
-    resetGameState();
+    showRestartScreen();
   }, corpseLifetime);
 }
 
@@ -1798,6 +2394,41 @@ function playNoise({ duration, gain = 0.08, when = 0, filterFrequency = 900 }) {
   source.stop(start + duration);
 }
 
+function playSwordSwing() {
+  const audio = getAudioContext();
+  const duration = 0.22;
+  const start = audio.currentTime;
+  const bufferSize = Math.floor(audio.sampleRate * duration);
+  const buffer = audio.createBuffer(1, bufferSize, audio.sampleRate);
+  const data = buffer.getChannelData(0);
+
+  for (let index = 0; index < bufferSize; index += 1) {
+    const t = index / bufferSize;
+    const envelope = Math.pow(1 - t, 2);
+    data[index] = (Math.random() * 2 - 1) * envelope;
+  }
+
+  const source = audio.createBufferSource();
+  const filter = audio.createBiquadFilter();
+  const volume = audio.createGain();
+
+  source.buffer = buffer;
+  filter.type = "bandpass";
+  filter.frequency.setValueAtTime(900, start);
+  filter.frequency.exponentialRampToValueAtTime(4200, start + duration);
+  filter.Q.setValueAtTime(1.2, start);
+
+  volume.gain.setValueAtTime(0.0001, start);
+  volume.gain.exponentialRampToValueAtTime(0.32, start + 0.03);
+  volume.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
+  source.connect(filter);
+  filter.connect(volume);
+  volume.connect(audio.destination);
+  source.start(start);
+  source.stop(start + duration);
+}
+
 function playGunSound(weaponName) {
   if (weaponName === "awm") {
     playNoise({ duration: 0.18, gain: 0.16, filterFrequency: 420 });
@@ -1871,7 +2502,18 @@ shopPanel?.addEventListener("click", (event) => {
     buyWeaponUpgrade(button.dataset.item, button.dataset.stat);
   } else if (button.dataset.action === "ability") {
     buyAbilityUpgrade(button.dataset.ability);
+  } else if (button.dataset.action === "skill") {
+    buyShopSkill(button.dataset.skill);
   }
+});
+
+shopPanel?.querySelectorAll(".shop-skill-row").forEach((row) => {
+  row.addEventListener("click", (event) => {
+    if (event.target.closest("button")) {
+      return;
+    }
+    handleShopSkillClick(row.dataset.shopSkill);
+  });
 });
 
 function connectMultiplayer() {
@@ -1901,6 +2543,8 @@ function connectMultiplayer() {
         ...message.bullet,
         ownerId: message.id,
       });
+    } else if (message.type === "bulletImpact") {
+      syncBulletImpact(message);
     } else if (message.type === "melee") {
       message.attack.ownerId = message.id;
       const remote = remotePlayers.get(message.id);
@@ -1933,6 +2577,7 @@ function connectMultiplayer() {
       player.x = message.x;
       player.y = message.y;
       player.knifeSwapTimer = knifeSwapCooldownSeconds;
+      player.skillCooldowns.knifeRecall = knifeSwapCooldownSeconds;
     } else if (message.type === "knifeSwap") {
       const remoteBullet = remoteBullets.find((bullet) => bullet.id === message.bulletId && bullet.ownerId === message.id);
       const remote = remotePlayers.get(message.id);
@@ -1974,6 +2619,35 @@ function connectMultiplayer() {
       if (message.attack) {
         addRailburstEffect(message.attack.startX, message.attack.startY, message.attack.endX, message.attack.endY, "#ff9cb5");
       }
+    } else if (message.type === "skillEffect") {
+      if (message.skill === "staticCollapse") {
+        addStaticCollapseEffect(message.x, message.y, message.radius);
+      } else if (message.skill === "staticCollapseBurst") {
+        addStaticCollapseBurstEffect(message.x, message.y, message.radius);
+      } else if (message.skill === "arcPrison") {
+        addArcPrisonEffect(message.x, message.y, message.radius);
+      } else if (message.skill === "stormRecall") {
+        addStormRecallEffect(message.x, message.y, message.radius);
+      }
+    } else if (message.type === "staticCollapseLaunch") {
+      staticCollapseProjectiles.push({
+        x: message.projectile.x,
+        y: message.projectile.y,
+        vx: message.projectile.vx,
+        vy: message.projectile.vy,
+        endX: message.projectile.endX,
+        endY: message.projectile.endY,
+        radius: message.projectile.radius,
+        damage: message.projectile.damage,
+        contactDamage: message.projectile.contactDamage,
+        chargeRatio: message.projectile.chargeRatio,
+        ownerId: message.id,
+      });
+    } else if (message.type === "status") {
+      if (message.status === "arcSlow") {
+        player.arcSlowTimer = Math.max(player.arcSlowTimer || 0, Number(message.duration || arcPrisonSlowSeconds));
+        player.arcSlowStrength = Math.min(player.arcSlowStrength || 1, Number(message.strength || 0.34));
+      }
     } else if (message.type === "pickupGranted") {
       applyPickupItem(message.item);
     } else if (message.type === "xpGranted") {
@@ -1985,11 +2659,16 @@ function connectMultiplayer() {
       updateShopHud();
       playPickupSound("coin");
     } else if (message.type === "health") {
+      if (Number.isFinite(message.x) && Number.isFinite(message.y)) {
+        player.x = message.x;
+        player.y = message.y;
+      }
       player.health = message.health;
       player.shield = message.shield;
       if (message.knockback) {
         player.vx += message.knockback.vx;
         player.vy += message.knockback.vy;
+        player.knockbackTimer = Math.max(player.knockbackTimer || 0, 0.58);
       }
 
       if (player.health <= 0) {
@@ -2019,6 +2698,36 @@ function connectMultiplayer() {
     remotePlayers.clear();
     remoteBullets.length = 0;
   });
+}
+
+function syncBulletImpact(message) {
+  for (const list of [bullets, remoteBullets]) {
+    const bulletIndex = list.findIndex((candidate) => candidate.id === message.bulletId && candidate.ownerId === message.ownerId);
+    if (bulletIndex < 0) {
+      continue;
+    }
+
+    const bullet = list[bulletIndex];
+    const nextX = Number(message.x);
+    const nextY = Number(message.y);
+
+    if (Number.isFinite(nextX) && Number.isFinite(nextY)) {
+      bullet.x = nextX;
+      bullet.y = nextY;
+    }
+
+    bullet.damage = Math.max(0, Number(message.damage || 0));
+
+    if (message.spent || bullet.damage <= 0) {
+      if (Number.isFinite(nextX) && Number.isFinite(nextY)) {
+        bullet.x = nextX;
+        bullet.y = nextY;
+      }
+      list.splice(bulletIndex, 1);
+    }
+
+    return;
+  }
 }
 
 function setRemotePlayerState(id, state) {
@@ -2058,7 +2767,7 @@ function syncWorldPickups(nextPickups) {
 }
 
 function swapWithThrownKnife() {
-  if (player.knifeSwapTimer > 0) {
+  if (player.knifeSwapTimer > 0 || (player.skillCooldowns.knifeRecall || 0) > 0) {
     return false;
   }
 
@@ -2079,7 +2788,8 @@ function swapWithThrownKnife() {
     dropPickupAt(previousPlayerX, previousPlayerY, knife.pickup || { type: "knife", count: 1 });
   }
   bullets.splice(bullets.indexOf(knife), 1);
-  player.knifeSwapTimer = knifeSwapCooldownSeconds;
+  player.knifeSwapTimer = player.testMode ? 0 : knifeSwapCooldownSeconds;
+  player.skillCooldowns.knifeRecall = player.testMode ? 0 : knifeSwapCooldownSeconds;
   addTeleportEffect(previousPlayerX, previousPlayerY);
   addTeleportEffect(player.x, player.y);
   sendNetwork("knifeSwap", { bulletId: knife.id });
@@ -2104,7 +2814,8 @@ function useLightningThrust() {
   player.y = endY;
   player.vx = Math.cos(angle) * 220;
   player.vy = Math.sin(angle) * 220;
-  player.lightningThrustTimer = lightningThrustCooldownSeconds;
+  player.lightningThrustTimer = player.testMode ? 0 : lightningThrustCooldownSeconds;
+  player.skillCooldowns.lightningThrust = player.testMode ? 0 : lightningThrustCooldownSeconds;
   player.lightningThrustActiveTimer = 0.18;
   player.swingTimer = 0.22;
   player.knifeCharging = false;
@@ -2151,7 +2862,8 @@ function startRailburst() {
     angle,
   };
   player.railburstChargeTimer = railburstChargeSeconds;
-  player.railburstTimer = railburstCooldownSeconds;
+  player.railburstTimer = player.testMode ? 0 : railburstCooldownSeconds;
+  player.skillCooldowns.railburst = player.testMode ? 0 : railburstCooldownSeconds;
   playTone({ frequency: 180, duration: 0.12, type: "sawtooth", gain: 0.04 });
   playTone({ frequency: 420, duration: 0.18, type: "triangle", gain: 0.035, when: 0.08 });
   sendNetwork("state", { state: getPlayerSnapshot() });
@@ -2199,6 +2911,228 @@ function fireRailburst(charge = player.railburstCharge, fromNetwork = false) {
   }
 
   return true;
+}
+
+function createLightningPoints(x1, y1, x2, y2, steps = 4, jitter = 12) {
+  const points = [{ x: x1, y: y1 }];
+  const angle = Math.atan2(y2 - y1, x2 - x1) + Math.PI / 2;
+
+  for (let index = 1; index < steps; index += 1) {
+    const t = index / steps;
+    const offset = (Math.random() - 0.5) * jitter;
+    points.push({
+      x: x1 + (x2 - x1) * t + Math.cos(angle) * offset,
+      y: y1 + (y2 - y1) * t + Math.sin(angle) * offset,
+    });
+  }
+
+  points.push({ x: x2, y: y2 });
+  return points;
+}
+
+function addStaticCollapseEffect(x, y, radius = staticCollapseRadius) {
+  const particles = Array.from({ length: 34 }, () => {
+    const angle = Math.random() * Math.PI * 2;
+    const distance = radius * (0.35 + Math.random() * 0.72);
+
+    return {
+      angle,
+      distance,
+      size: 2 + Math.random() * 2.4,
+      spin: (Math.random() - 0.5) * 1.2,
+      delay: Math.random() * 0.22,
+    };
+  });
+
+  staticCollapseEffects.push({ x, y, radius, particles, startedAt: performance.now(), duration: staticCollapseDelay * 1000 + 620 });
+}
+
+function addStaticCollapseBurstEffect(x, y, radius = staticCollapseRadius) {
+  staticCollapseEffects.push({
+    x,
+    y,
+    radius,
+    particles: [],
+    startedAt: performance.now(),
+    duration: 620,
+    burstOnly: true,
+  });
+}
+
+function addArcPrisonEffect(x, y, radius = arcPrisonRadius) {
+  const sparks = Array.from({ length: 18 }, () => ({
+    angle: Math.random() * Math.PI * 2,
+    speed: 0.8 + Math.random() * 1.6,
+    length: 14 + Math.random() * 26,
+  }));
+
+  arcPrisonEffects.push({ x, y, radius, sparks, startedAt: performance.now(), duration: 1900 });
+}
+
+function addStormRecallEffect(x, y, radius = stormRecallRadius) {
+  const sparks = Array.from({ length: 14 }, () => ({
+    angle: Math.random() * Math.PI * 2,
+    distance: radius * (0.16 + Math.random() * 0.42),
+    size: 2 + Math.random() * 2.5,
+  }));
+
+  stormRecallEffects.push({ x, y, radius, sparks, startedAt: performance.now(), duration: 240 });
+}
+
+function equipStaticCollapse() {
+  if (player.staticCollapseHeld) {
+    player.staticCollapseHeld = false;
+    player.staticCollapseCharging = false;
+    player.staticCollapseCharge = 0;
+    updateSkillHud();
+    return true;
+  }
+
+  if ((player.skillCooldowns.staticCollapse || 0) > 0) {
+    return false;
+  }
+
+  player.staticCollapseHeld = true;
+  player.staticCollapseCharging = false;
+  player.staticCollapseCharge = 0;
+  updateSkillHud();
+  return true;
+}
+
+function startStaticCollapseCharge() {
+  if (!player.staticCollapseHeld || player.staticCollapseCharging) {
+    return false;
+  }
+
+  player.staticCollapseCharging = true;
+  player.staticCollapseCharge = 0;
+  updateSkillHud();
+  return true;
+}
+
+function releaseStaticCollapse() {
+  if (!player.staticCollapseHeld || !player.staticCollapseCharging) {
+    return false;
+  }
+
+  const chargeRatio = clamp(player.staticCollapseCharge / staticCollapseChargeMax, 0.08, 1);
+  const angle = getAimAngle();
+  const startDistance = player.radius + 90;
+  const startX = player.x + Math.cos(angle) * startDistance;
+  const startY = player.y + Math.sin(angle) * startDistance;
+  const distance = staticCollapseMinRange + chargeRatio * (staticCollapseMaxRange - staticCollapseMinRange);
+  const endX = clamp(startX + Math.cos(angle) * distance, 0, world.width);
+  const endY = clamp(startY + Math.sin(angle) * distance, 0, world.height);
+  const damage = getScaledDamage(45 + chargeRatio * 135);
+  const contactDamage = getScaledDamage(18 + chargeRatio * 62);
+
+  player.staticCollapseHeld = false;
+  player.staticCollapseCharging = false;
+  player.staticCollapseCharge = 0;
+  player.skillCooldowns.staticCollapse = player.testMode ? 0 : staticCollapseCooldownSeconds;
+  staticCollapseProjectiles.push({
+    x: startX,
+    y: startY,
+    vx: Math.cos(angle) * staticCollapseProjectileSpeed,
+    vy: Math.sin(angle) * staticCollapseProjectileSpeed,
+    endX,
+    endY,
+    radius: 16 + chargeRatio * 8,
+    damage,
+    contactDamage,
+    chargeRatio,
+    ownerId: localClientId,
+    hitCrateIds: new Set(),
+  });
+  sendNetwork("skill", {
+    skill: "staticCollapse",
+    x: endX,
+    y: endY,
+    startX,
+    startY,
+    radius: staticCollapseRadius,
+    damage,
+    contactDamage,
+    chargeRatio,
+  });
+  playTone({ frequency: 260, duration: 0.18, type: "triangle", gain: 0.045 });
+  updateSkillHud();
+  return true;
+}
+
+function useArcPrison() {
+  if ((player.skillCooldowns.arcPrison || 0) > 0) {
+    return false;
+  }
+
+  const target = getMouseWorld();
+  player.skillCooldowns.arcPrison = player.testMode ? 0 : arcPrisonCooldownSeconds;
+  addArcPrisonEffect(target.x, target.y);
+  sendNetwork("skill", {
+    skill: "arcPrison",
+    x: target.x,
+    y: target.y,
+    radius: arcPrisonRadius,
+    damage: getScaledDamage(arcPrisonDamage),
+  });
+  playTone({ frequency: 520, duration: 0.12, type: "sine", gain: 0.04 });
+  playTone({ frequency: 820, duration: 0.18, type: "triangle", gain: 0.035, when: 0.08 });
+  if (!sharedWorldActive) {
+    for (let index = crates.length - 1; index >= 0; index -= 1) {
+      const crate = crates[index];
+      const distance = distanceToArcPrisonEdge(crate.x, crate.y, target.x, target.y, arcPrisonRadius);
+      if (distance <= arcPrisonEdgeWidth + getCrateHitboxSize(crate) / 2) {
+        damageCrate(index, getScaledDamage(arcPrisonDamage));
+      }
+    }
+  }
+  updateSkillHud();
+  return true;
+}
+
+function useStormRecall() {
+  if ((player.skillCooldowns.stormRecall || 0) > 0) {
+    return false;
+  }
+
+  player.skillCooldowns.stormRecall = player.testMode ? 0 : stormRecallCooldownSeconds;
+  addStormRecallEffect(player.x, player.y);
+  sendNetwork("skill", {
+    skill: "stormRecall",
+    x: player.x,
+    y: player.y,
+    radius: stormRecallRadius,
+    damage: getScaledDamage(stormRecallDamage),
+  });
+  playTone({ frequency: 180, duration: 0.12, type: "sawtooth", gain: 0.045 });
+  playTone({ frequency: 740, duration: 0.2, type: "triangle", gain: 0.04, when: 0.05 });
+  if (!sharedWorldActive) {
+    for (let index = crates.length - 1; index >= 0; index -= 1) {
+      const crate = crates[index];
+      if (Math.hypot(crate.x - player.x, crate.y - player.y) <= stormRecallRadius + getCrateHitboxSize(crate) / 2) {
+        damageCrate(index, getScaledDamage(stormRecallDamage));
+      }
+    }
+  }
+  updateSkillHud();
+  return true;
+}
+
+function useEquippedSkill(slotKey) {
+  if (!isSkillSlotUnlocked(slotKey)) {
+    return false;
+  }
+
+  const skill = player.skillSlots[slotKey];
+
+  if (skill === "knifeRecall") return swapWithThrownKnife();
+  if (skill === "staticCollapse") return equipStaticCollapse();
+  if (skill === "arcPrison") return useArcPrison();
+  if (skill === "stormRecall") return useStormRecall();
+  if (skill === "lightningThrust") return useLightningThrust();
+  if (skill === "railburst") return startRailburst();
+
+  return false;
 }
 
 function dropPickupAt(x, y, item) {
@@ -2272,11 +3206,11 @@ function handleRemoteMelee(attack) {
 }
 
 function screenToWorldX(x) {
-  return x + camera.x - width / 2;
+  return (x - width / 2) / camera.zoom + camera.x;
 }
 
 function screenToWorldY(y) {
-  return y + camera.y - height / 2;
+  return (y - height / 2) / camera.zoom + camera.y;
 }
 
 function getAimAngle() {
@@ -2301,6 +3235,13 @@ function getMoveAxis() {
   }
 
   return { x, y, active: length > 0 };
+}
+
+function getMouseWorld() {
+  return {
+    x: clamp(screenToWorldX(mouse.x), player.radius, world.width - player.radius),
+    y: clamp(screenToWorldY(mouse.y), player.radius, world.height - player.radius),
+  };
 }
 
 function startReload(weaponName = weapons.slots[weapons.selectedSlot]) {
@@ -2388,24 +3329,27 @@ function swingKnife() {
     },
   });
 
-  for (let index = crates.length - 1; index >= 0; index -= 1) {
-    const crate = crates[index];
-    const distance = Math.hypot(crate.x - player.x, crate.y - player.y);
+  if (!sharedWorldActive) {
+    for (let index = crates.length - 1; index >= 0; index -= 1) {
+      const crate = crates[index];
+      const distance = Math.hypot(crate.x - player.x, crate.y - player.y);
 
-    if (distance > knife.range + crate.size / 2) {
-      continue;
-    }
+      if (distance > knife.range + getCrateHitboxSize(crate) / 2) {
+        continue;
+      }
 
-    const targetAngle = Math.atan2(crate.y - player.y, crate.x - player.x);
-    const angleDiff = Math.atan2(Math.sin(targetAngle - angle), Math.cos(targetAngle - angle));
+      const targetAngle = Math.atan2(crate.y - player.y, crate.x - player.x);
+      const angleDiff = Math.atan2(Math.sin(targetAngle - angle), Math.cos(targetAngle - angle));
 
-    if (Math.abs(angleDiff) <= knife.arc / 2) {
-      damageCrate(index, getScaledDamage(knife.damage));
-      hitSomething = true;
+      if (Math.abs(angleDiff) <= knife.arc / 2) {
+        damageCrate(index, getScaledDamage(knife.damage));
+        hitSomething = true;
+      }
     }
   }
 
   player.swingTimer = knife.swingDuration;
+  playSwordSwing();
   return true;
 }
 
@@ -2430,19 +3374,21 @@ function punch() {
     },
   });
 
-  for (let index = crates.length - 1; index >= 0; index -= 1) {
-    const crate = crates[index];
-    const distance = Math.hypot(crate.x - player.x, crate.y - player.y);
+  if (!sharedWorldActive) {
+    for (let index = crates.length - 1; index >= 0; index -= 1) {
+      const crate = crates[index];
+      const distance = Math.hypot(crate.x - player.x, crate.y - player.y);
 
-    if (distance > fist.range + crate.size / 2) {
-      continue;
-    }
+      if (distance > fist.range + getCrateHitboxSize(crate) / 2) {
+        continue;
+      }
 
-    const targetAngle = Math.atan2(crate.y - player.y, crate.x - player.x);
-    const angleDiff = Math.atan2(Math.sin(targetAngle - angle), Math.cos(targetAngle - angle));
+      const targetAngle = Math.atan2(crate.y - player.y, crate.x - player.x);
+      const angleDiff = Math.atan2(Math.sin(targetAngle - angle), Math.cos(targetAngle - angle));
 
-    if (Math.abs(angleDiff) <= fist.arc / 2) {
-      damageCrate(index, getScaledDamage(fist.damage));
+      if (Math.abs(angleDiff) <= fist.arc / 2) {
+        damageCrate(index, getScaledDamage(fist.damage));
+      }
     }
   }
 
@@ -2521,7 +3467,7 @@ function dash() {
   player.vx = dashX * player.dashSpeed;
   player.vy = dashY * player.dashSpeed;
   player.dashActiveTimer = player.dashDuration;
-  player.dashTimer = player.dashCooldown;
+  player.dashTimer = player.testMode ? 0 : player.dashCooldown;
 }
 
 function update(delta) {
@@ -2552,6 +3498,11 @@ function update(delta) {
 
   player.dashActiveTimer = Math.max(0, player.dashActiveTimer - delta);
   player.lightningThrustActiveTimer = Math.max(0, player.lightningThrustActiveTimer - delta);
+  player.knockbackTimer = Math.max(0, (player.knockbackTimer || 0) - delta);
+  player.arcSlowTimer = Math.max(0, (player.arcSlowTimer || 0) - delta);
+  if (player.arcSlowTimer <= 0) {
+    player.arcSlowStrength = 1;
+  }
   shopToastTimer = Math.max(0, shopToastTimer - delta);
 
   if (player.dashActiveTimer <= 0 && player.lightningThrustActiveTimer <= 0) {
@@ -2561,9 +3512,10 @@ function update(delta) {
   }
 
   const nextSpeed = Math.hypot(player.vx, player.vy);
-  if (player.dashActiveTimer <= 0 && player.lightningThrustActiveTimer <= 0 && nextSpeed > player.maxSpeed) {
-    player.vx = (player.vx / nextSpeed) * player.maxSpeed;
-    player.vy = (player.vy / nextSpeed) * player.maxSpeed;
+  const effectiveMaxSpeed = player.arcSlowTimer > 0 ? player.maxSpeed * (player.arcSlowStrength || 0.34) : player.maxSpeed;
+  if (player.dashActiveTimer <= 0 && player.lightningThrustActiveTimer <= 0 && player.knockbackTimer <= 0 && nextSpeed > effectiveMaxSpeed) {
+    player.vx = (player.vx / nextSpeed) * effectiveMaxSpeed;
+    player.vy = (player.vy / nextSpeed) * effectiveMaxSpeed;
   }
 
   const nextX = player.x + player.vx * delta;
@@ -2591,11 +3543,84 @@ function update(delta) {
   player.knifeSwapTimer = Math.max(0, player.knifeSwapTimer - delta);
   player.lightningThrustTimer = Math.max(0, player.lightningThrustTimer - delta);
   player.railburstTimer = Math.max(0, player.railburstTimer - delta);
+  for (const skill of Object.keys(player.skillCooldowns)) {
+    player.skillCooldowns[skill] = Math.max(0, (player.skillCooldowns[skill] || 0) - delta);
+  }
+  player.skillCooldowns.knifeRecall = Math.max(player.skillCooldowns.knifeRecall || 0, player.knifeSwapTimer);
+  if (player.testMode) {
+    player.dashTimer = 0;
+    player.knifeSwapTimer = 0;
+    player.lightningThrustTimer = 0;
+    player.railburstTimer = 0;
+    for (const skill of Object.keys(player.skillCooldowns)) {
+      player.skillCooldowns[skill] = 0;
+    }
+  }
+  if (player.staticCollapseCharging) {
+    player.staticCollapseCharge = Math.min(staticCollapseChargeMax, player.staticCollapseCharge + delta);
+  }
   if (player.railburstCharge) {
     player.railburstChargeTimer = Math.max(0, player.railburstChargeTimer - delta);
     if (player.railburstChargeTimer <= 0) {
       fireRailburst();
       player.railburstCharge = null;
+    }
+  }
+
+  for (let index = player.pendingStaticCollapse.length - 1; index >= 0; index -= 1) {
+    const collapse = player.pendingStaticCollapse[index];
+    collapse.timer -= delta;
+
+    if (collapse.timer > 0) {
+      continue;
+    }
+
+    if (!sharedWorldActive) {
+      for (let crateIndex = crates.length - 1; crateIndex >= 0; crateIndex -= 1) {
+        const crate = crates[crateIndex];
+        if (Math.hypot(crate.x - collapse.x, crate.y - collapse.y) <= collapse.radius + getCrateHitboxSize(crate) / 2) {
+          damageCrate(crateIndex, collapse.damage);
+        }
+      }
+    }
+
+    player.pendingStaticCollapse.splice(index, 1);
+  }
+  for (let index = staticCollapseProjectiles.length - 1; index >= 0; index -= 1) {
+    const projectile = staticCollapseProjectiles[index];
+    const previousX = projectile.x;
+    const previousY = projectile.y;
+    const remaining = Math.hypot(projectile.endX - projectile.x, projectile.endY - projectile.y);
+    const travel = Math.hypot(projectile.vx, projectile.vy) * delta;
+
+    if (travel >= remaining) {
+      projectile.x = projectile.endX;
+      projectile.y = projectile.endY;
+      player.pendingStaticCollapse.push({
+        x: projectile.endX,
+        y: projectile.endY,
+        radius: staticCollapseRadius,
+        damage: projectile.damage,
+        timer: staticCollapseDelay,
+      });
+      addStaticCollapseBurstEffect(projectile.endX, projectile.endY);
+      staticCollapseProjectiles.splice(index, 1);
+      continue;
+    }
+
+    projectile.x += projectile.vx * delta;
+    projectile.y += projectile.vy * delta;
+
+    if (!sharedWorldActive) {
+      for (let crateIndex = crates.length - 1; crateIndex >= 0; crateIndex -= 1) {
+        const crate = crates[crateIndex];
+        const crateKey = crate.id ?? `local-${crateIndex}`;
+        if (projectile.hitCrateIds.has(crateKey)) continue;
+        if (segmentHitsBox(previousX, previousY, projectile.x, projectile.y, crate, projectile.radius)) {
+          projectile.hitCrateIds.add(crateKey);
+          damageCrate(crateIndex, projectile.contactDamage);
+        }
+      }
     }
   }
   if (player.knifeCharging && weapons.slots[weapons.selectedSlot] === "knife") {
@@ -2634,6 +3659,7 @@ function update(delta) {
 
   for (let index = bullets.length - 1; index >= 0; index -= 1) {
     const bullet = bullets[index];
+
     const previousX = bullet.x;
     const previousY = bullet.y;
     bullet.x += bullet.vx * delta;
@@ -2660,11 +3686,6 @@ function update(delta) {
 
         if (!sharedWorldActive) {
           damageCrate(crateIndex, absorbed);
-        } else {
-          crate.hp -= absorbed;
-          if (crate.hp <= 0) {
-            crates.splice(crateIndex, 1);
-          }
         }
 
         if (bullet.weapon === "knife") {
@@ -2739,6 +3760,7 @@ function update(delta) {
 
   for (let index = remoteBullets.length - 1; index >= 0; index -= 1) {
     const bullet = remoteBullets[index];
+
     const previousX = bullet.x;
     const previousY = bullet.y;
     bullet.x += bullet.vx * delta;
@@ -2817,12 +3839,16 @@ function update(delta) {
 
     const distanceToPickup = Math.hypot(pickup.x - player.x, pickup.y - player.y);
 
-    if (distanceToPickup <= magnetRange && canMagnetPickup(pickup)) {
+    const passiveMagnetRange = getPassiveMagnetRange();
+    const passiveMagnetSpeed = getPassiveMagnetSpeed();
+
+    if (passiveMagnetRange > 0 && distanceToPickup <= passiveMagnetRange && canMagnetPickup(pickup)) {
       pickup.magnetized = true;
     }
 
     if (pickup.magnetized && distanceToPickup > pickup.radius + player.radius) {
-      const pull = Math.min(distanceToPickup, magnetSpeed * delta);
+      const pullSpeed = passiveMagnetSpeed > 0 ? passiveMagnetSpeed : magnetBaseSpeed;
+      const pull = Math.min(distanceToPickup, pullSpeed * delta);
       pickup.x += ((player.x - pickup.x) / distanceToPickup) * pull;
       pickup.y += ((player.y - pickup.y) / distanceToPickup) * pull;
     }
@@ -2835,16 +3861,10 @@ function update(delta) {
   crateRegenTimer -= delta;
 
   if (!sharedWorldActive && crateRegenTimer <= 0) {
-    if (getCrateCount("basic") < maxCrates) {
-      spawnCrate("basic");
-    }
-
-    if (getCrateCount("metal") < maxMetalCrates) {
-      spawnCrate("metal");
-    }
-
-    if (getCrateCount("gold") < maxGoldCrates) {
-      spawnCrate("gold");
+    for (const kind of crateTierOrder) {
+      if (getCrateCount(kind) < crateTiers[kind].count) {
+        spawnCrate(kind);
+      }
     }
 
     crateRegenTimer = crateRespawnSeconds;
@@ -2960,7 +3980,7 @@ function updateInventory() {
 
     slot.classList.toggle("active", slotNumber === weapons.selectedSlot);
     slot.classList.toggle("empty", !weaponName);
-    slot.draggable = Boolean(weaponName);
+    slot.draggable = false;
     slot.setAttribute("aria-label", `Slot ${slotNumber} ${display.label}`);
     slot.innerHTML = `<span class="slot-key">${slotNumber}</span>${display.icon}<span class="slot-name">${display.label}</span><span class="slot-meta">${display.meta}</span>`;
   }
@@ -2982,6 +4002,40 @@ function swapSlots(fromSlot, toSlot) {
   updateInventory();
 }
 
+function getInventorySlotFromPoint(x, y) {
+  return document.elementFromPoint(x, y)?.closest(".slot") || null;
+}
+
+function clearWeaponDragTarget() {
+  for (const inventorySlot of inventorySlots) {
+    inventorySlot.classList.remove("dragging", "drop-target");
+  }
+}
+
+function createWeaponDragPreview(slotElement) {
+  if (weaponDragPreview || !slotElement) {
+    return;
+  }
+
+  weaponDragPreview = document.createElement("div");
+  weaponDragPreview.className = "weapon-drag-preview";
+  weaponDragPreview.innerHTML = slotElement.innerHTML;
+  document.body.appendChild(weaponDragPreview);
+}
+
+function updateWeaponDragPreview(x, y) {
+  if (!weaponDragPreview) {
+    return;
+  }
+
+  weaponDragPreview.style.transform = `translate(${x - 42}px, ${y - 46}px)`;
+}
+
+function removeWeaponDragPreview() {
+  weaponDragPreview?.remove();
+  weaponDragPreview = null;
+}
+
 function dropSelectedWeapon() {
   const selectedWeapon = weapons.slots[weapons.selectedSlot];
 
@@ -2990,8 +4044,8 @@ function dropSelectedWeapon() {
   }
 
   const angle = getAimAngle();
-  const dropX = player.x + Math.cos(angle) * 64;
-  const dropY = player.y + Math.sin(angle) * 64;
+  const dropX = player.x + Math.cos(angle) * 112;
+  const dropY = player.y + Math.sin(angle) * 112;
 
   if (selectedWeapon === "knife") {
     dropPickupAt(dropX, dropY, { type: "knife", count: Math.max(1, weapons.knife.count) });
@@ -3047,15 +4101,25 @@ function dropAllLoot(x, y) {
     dropIndex += 1;
   }
 
-  dropPickupAt(x + 18, y - 42, { type: "xp", value: getDeathXpDrop() });
+  getXpDropValues(getDeathXpDrop()).forEach((value, index) => {
+    const angle = index * 2.399963;
+    const distance = 18 + Math.sqrt(index) * 13;
+    dropPickupAt(x + 18 + Math.cos(angle) * distance, y - 42 + Math.sin(angle) * distance, { type: "xp", value });
+  });
+
+  getCoinDropEntries(getDeathCoinDrop()).forEach((entry, index) => {
+    const angle = index * 2.399963 + Math.PI / 5;
+    const distance = 18 + Math.sqrt(index) * 13;
+    dropPickupAt(x - 18 + Math.cos(angle) * distance, y + 42 + Math.sin(angle) * distance, { type: "coin", ...entry });
+  });
 }
 
 function worldToScreenX(x) {
-  return x - camera.x + width / 2;
+  return (x - camera.x) * camera.zoom + width / 2;
 }
 
 function worldToScreenY(y) {
-  return y - camera.y + height / 2;
+  return (y - camera.y) * camera.zoom + height / 2;
 }
 
 function drawShopArea() {
@@ -3157,10 +4221,12 @@ function drawWorldPrompt(x, y, text) {
 
 function drawGrid() {
   const gridSize = 80;
-  const startX = Math.floor((camera.x - width / 2) / gridSize) * gridSize;
-  const endX = camera.x + width / 2 + gridSize;
-  const startY = Math.floor((camera.y - height / 2) / gridSize) * gridSize;
-  const endY = camera.y + height / 2 + gridSize;
+  const viewHalfWidth = width / 2 / camera.zoom;
+  const viewHalfHeight = height / 2 / camera.zoom;
+  const startX = Math.floor((camera.x - viewHalfWidth) / gridSize) * gridSize;
+  const endX = camera.x + viewHalfWidth + gridSize;
+  const startY = Math.floor((camera.y - viewHalfHeight) / gridSize) * gridSize;
+  const endY = camera.y + viewHalfHeight + gridSize;
 
   ctx.lineWidth = 1;
 
@@ -3184,28 +4250,30 @@ function drawGrid() {
 }
 
 function drawWorldBounds() {
-  const x = worldToScreenX(0);
-  const y = worldToScreenY(0);
+  const left = worldToScreenX(0);
+  const right = worldToScreenX(world.width);
+  const top = worldToScreenY(0);
+  const bottom = worldToScreenY(world.height);
   const doorTop = worldToScreenY(shopDoor.y - shopDoor.height / 2);
   const doorBottom = worldToScreenY(shopDoor.y + shopDoor.height / 2);
 
   ctx.lineWidth = 5;
   ctx.strokeStyle = "rgba(255, 95, 95, 0.72)";
   ctx.beginPath();
-  ctx.moveTo(x, y);
-  ctx.lineTo(x + world.width, y);
-  ctx.lineTo(x + world.width, y + world.height);
-  ctx.lineTo(x, y + world.height);
-  ctx.lineTo(x, doorBottom);
-  ctx.moveTo(x, doorTop);
-  ctx.lineTo(x, y);
+  ctx.moveTo(left, top);
+  ctx.lineTo(right, top);
+  ctx.lineTo(right, bottom);
+  ctx.lineTo(left, bottom);
+  ctx.lineTo(left, doorBottom);
+  ctx.moveTo(left, doorTop);
+  ctx.lineTo(left, top);
   ctx.stroke();
 
   ctx.fillStyle = "rgba(255, 95, 95, 0.18)";
   ctx.strokeStyle = "#ffcf5f";
   ctx.lineWidth = 4;
   ctx.beginPath();
-  ctx.roundRect(x - 16, doorTop, 32, doorBottom - doorTop, 8);
+  ctx.roundRect(left - 16, doorTop, 32, doorBottom - doorTop, 8);
   ctx.fill();
   ctx.stroke();
 
@@ -3214,92 +4282,316 @@ function drawWorldBounds() {
   }
 }
 
-function drawTreasureCrate(half, kind) {
-  const isGold = kind === "gold";
-  const bodyGradient = ctx.createLinearGradient(-half, -half * 0.15, half, half);
-  bodyGradient.addColorStop(0, isGold ? "#b88c25" : "#6e7880");
-  bodyGradient.addColorStop(0.45, isGold ? "#8b1d19" : "#444d55");
-  bodyGradient.addColorStop(1, isGold ? "#41100d" : "#1d242a");
-  const lidGradient = ctx.createLinearGradient(0, -half, 0, half * 0.1);
-  lidGradient.addColorStop(0, isGold ? "#f4d05f" : "#bec6cc");
-  lidGradient.addColorStop(0.34, isGold ? "#a62c24" : "#79838b");
-  lidGradient.addColorStop(1, isGold ? "#58130f" : "#30383f");
-  const trim = isGold ? "#f3ca54" : "#141c22";
-  const trimLight = isGold ? "#fff0a8" : "#9aa4aa";
-  const stroke = isGold ? "#4d2c06" : "#11171c";
+function drawChestCrate(half, kind) {
+  const palette = {
+    bronze: {
+      body: ["#b37a35", "#8b5828", "#5c351b"],
+      panel: "#855127",
+      trim: "#69737b",
+      trimHi: "#c2ccd3",
+      trimLo: "#313940",
+      lock: "#89949d",
+      stroke: "#1a2025",
+    },
+    metal: {
+      body: ["#5b646c", "#3a424a", "#20272d"],
+      panel: "#343c43",
+      trim: "#171e24",
+      trimHi: "#7d8790",
+      trimLo: "#0e1419",
+      lock: "#424a52",
+      stroke: "#10161b",
+    },
+    gold: {
+      body: ["#ca4937", "#a32a20", "#751812"],
+      panel: "#9b241b",
+      trim: "#e7b642",
+      trimHi: "#ffe89a",
+      trimLo: "#8e5a12",
+      lock: "#e0af39",
+      stroke: "#5b240c",
+    },
+    royal: {
+      body: ["#7131b2", "#561b8d", "#321052"],
+      panel: "#4c167d",
+      trim: "#e7b642",
+      trimHi: "#ffe89a",
+      trimLo: "#8e5a12",
+      lock: "#437fe5",
+      stroke: "#24103e",
+    },
+  }[kind] || {
+    body: ["#5b646c", "#3a424a", "#20272d"],
+    panel: "#343c43",
+    trim: "#171e24",
+    trimHi: "#7d8790",
+    trimLo: "#0e1419",
+    lock: "#424a52",
+    stroke: "#10161b",
+  };
+
+  const bodyGradient = ctx.createLinearGradient(-half, -half, half, half);
+  bodyGradient.addColorStop(0, palette.body[0]);
+  bodyGradient.addColorStop(0.48, palette.body[1]);
+  bodyGradient.addColorStop(1, palette.body[2]);
+
+  ctx.save();
+  ctx.globalAlpha = 0.34;
+  ctx.fillStyle = "#000";
+  ctx.beginPath();
+  ctx.roundRect(-half + 5, -half + 7, half * 2, half * 2, 7);
+  ctx.fill();
+  ctx.restore();
 
   ctx.fillStyle = bodyGradient;
-  ctx.strokeStyle = stroke;
+  ctx.strokeStyle = palette.stroke;
   ctx.lineWidth = 4;
   ctx.beginPath();
-  ctx.roundRect(-half, -half * 0.12, half * 2, half * 1.18, 5);
+  ctx.roundRect(-half, -half, half * 2, half * 2, 6);
   ctx.fill();
   ctx.stroke();
 
-  ctx.fillStyle = lidGradient;
+  ctx.fillStyle = palette.panel;
   ctx.beginPath();
-  ctx.moveTo(-half, -half * 0.12);
-  ctx.quadraticCurveTo(-half * 0.72, -half * 0.92, 0, -half * 0.94);
-  ctx.quadraticCurveTo(half * 0.72, -half * 0.92, half, -half * 0.12);
-  ctx.lineTo(half, half * 0.1);
-  ctx.lineTo(-half, half * 0.1);
-  ctx.closePath();
+  ctx.roundRect(-half + 7, -half + 7, half * 2 - 14, half * 2 - 14, 4);
   ctx.fill();
-  ctx.stroke();
 
-  ctx.strokeStyle = trim;
-  ctx.lineWidth = 7;
+  const lidShine = ctx.createLinearGradient(-half, -half, half, half);
+  lidShine.addColorStop(0, "rgba(255,255,255,0.22)");
+  lidShine.addColorStop(0.4, "rgba(255,255,255,0)");
+  lidShine.addColorStop(1, "rgba(0,0,0,0.22)");
+  ctx.fillStyle = lidShine;
+  ctx.beginPath();
+  ctx.roundRect(-half + 7, -half + 7, half * 2 - 14, half * 2 - 14, 4);
+  ctx.fill();
+
+  ctx.strokeStyle = palette.trim;
+  ctx.lineWidth = 8;
   for (const stripeX of [-half * 0.58, half * 0.58]) {
     ctx.beginPath();
-    ctx.moveTo(stripeX, -half * 0.82);
-    ctx.lineTo(stripeX, half * 1.02);
+    ctx.moveTo(stripeX, -half + 5);
+    ctx.lineTo(stripeX, half - 5);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.moveTo(-half + 5, 0);
+  ctx.lineTo(half - 5, 0);
+  ctx.stroke();
+
+  ctx.strokeStyle = palette.trimHi;
+  ctx.lineWidth = 2;
+  for (const stripeX of [-half * 0.58 - 2, half * 0.58 - 2]) {
+    ctx.beginPath();
+    ctx.moveTo(stripeX, -half + 7);
+    ctx.lineTo(stripeX, half - 7);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = palette.trimLo;
+  for (const stripeX of [-half * 0.58 + 3, half * 0.58 + 3]) {
+    ctx.beginPath();
+    ctx.moveTo(stripeX, -half + 7);
+    ctx.lineTo(stripeX, half - 7);
     ctx.stroke();
   }
 
-  ctx.strokeStyle = trim;
-  ctx.lineWidth = 5;
-  ctx.beginPath();
-  ctx.moveTo(-half, half * 0.12);
-  ctx.lineTo(half, half * 0.12);
-  ctx.stroke();
-
-  ctx.fillStyle = trimLight;
-  for (const rivetX of [-half + 10, -half * 0.58, 0, half * 0.58, half - 10]) {
-    for (const rivetY of [-half * 0.52, half * 0.58]) {
+  ctx.fillStyle = palette.trim;
+  for (const cornerX of [-half + 8, half - 18]) {
+    for (const cornerY of [-half + 8, half - 18]) {
       ctx.beginPath();
-      ctx.arc(rivetX, rivetY, 2.4, 0, Math.PI * 2);
+      ctx.roundRect(cornerX, cornerY, 10, 10, 2);
       ctx.fill();
     }
   }
 
-  ctx.fillStyle = isGold ? "#e5b43f" : "#5b6269";
-  ctx.strokeStyle = stroke;
+  ctx.fillStyle = palette.trimHi;
+  for (const rivetX of [-half + 13, -half * 0.58, half * 0.58, half - 13]) {
+    for (const rivetY of [-half + 13, half - 13]) {
+      ctx.beginPath();
+      ctx.arc(rivetX, rivetY, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  ctx.fillStyle = palette.lock;
+  ctx.strokeStyle = palette.stroke;
   ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.roundRect(-13, -2, 26, 31, 5);
+  ctx.moveTo(-11, -10);
+  ctx.lineTo(11, -10);
+  ctx.lineTo(15, -4);
+  ctx.lineTo(15, 7);
+  ctx.lineTo(11, 11);
+  ctx.lineTo(-11, 11);
+  ctx.lineTo(-15, 7);
+  ctx.lineTo(-15, -4);
+  ctx.closePath();
   ctx.fill();
   ctx.stroke();
-  ctx.fillStyle = isGold ? "#5e230c" : "#12181d";
-  ctx.beginPath();
-  ctx.arc(0, 11, 5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillRect(-2, 11, 4, 10);
 
-  ctx.strokeStyle = isGold ? "rgba(255, 240, 168, 0.32)" : "rgba(238, 244, 246, 0.28)";
+  ctx.fillStyle = palette.stroke;
+  ctx.beginPath();
+  ctx.arc(0, 0, 4.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillRect(-2, 2, 4, 7);
+}
+
+function drawBronzeCrate(half) {
+  ctx.save();
+  ctx.globalAlpha = 0.34;
+  ctx.fillStyle = "#000";
+  ctx.beginPath();
+  ctx.roundRect(-half + 5, -half + 7, half * 2, half * 2, 6);
+  ctx.fill();
+  ctx.restore();
+
+  const wood = ctx.createLinearGradient(-half, -half, half, half);
+  wood.addColorStop(0, "#b57a35");
+  wood.addColorStop(0.45, "#8e5b28");
+  wood.addColorStop(1, "#63391c");
+  ctx.fillStyle = wood;
+  ctx.strokeStyle = "#1a2025";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.roundRect(-half, -half, half * 2, half * 2, 5);
+  ctx.fill();
+  ctx.stroke();
+
+  const inset = ctx.createLinearGradient(-half + 7, -half + 7, half - 7, half - 7);
+  inset.addColorStop(0, "rgba(255, 214, 148, 0.18)");
+  inset.addColorStop(0.52, "rgba(255, 255, 255, 0)");
+  inset.addColorStop(1, "rgba(0, 0, 0, 0.24)");
+  ctx.fillStyle = inset;
+  ctx.beginPath();
+  ctx.roundRect(-half + 7, -half + 7, half * 2 - 14, half * 2 - 14, 4);
+  ctx.fill();
+
+  ctx.strokeStyle = "rgba(86, 48, 22, 0.72)";
+  ctx.lineWidth = 6;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(-half + 14, -half + 14);
+  ctx.lineTo(half - 14, half - 14);
+  ctx.moveTo(half - 14, -half + 14);
+  ctx.lineTo(-half + 14, half - 14);
+  ctx.stroke();
+  ctx.strokeStyle = "rgba(255, 208, 132, 0.22)";
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(-half + 9, -half * 0.42);
-  ctx.lineTo(half - 11, -half * 0.54);
-  ctx.moveTo(-half + 10, half * 0.54);
-  ctx.lineTo(half - 12, half * 0.43);
+  ctx.moveTo(-half + 16, -half + 16);
+  ctx.lineTo(half - 16, half - 16);
+  ctx.moveTo(half - 16, -half + 16);
+  ctx.lineTo(-half + 16, half - 16);
   ctx.stroke();
+  ctx.lineCap = "butt";
+
+  ctx.fillStyle = "#6b737b";
+  ctx.strokeStyle = "#222a30";
+  ctx.lineWidth = 2;
+  for (const stripeX of [-half * 0.58, half * 0.58]) {
+    ctx.beginPath();
+    ctx.roundRect(stripeX - 5, -half + 4, 10, half * 2 - 8, 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.roundRect(-half + 4, -5, half * 2 - 8, 10, 2);
+  ctx.fill();
+  ctx.stroke();
+
+  const topBottomPlate = ctx.createLinearGradient(-half, 0, half, 0);
+  topBottomPlate.addColorStop(0, "#69737b");
+  topBottomPlate.addColorStop(0.5, "#aeb8bf");
+  topBottomPlate.addColorStop(1, "#69737b");
+  ctx.fillStyle = topBottomPlate;
+  ctx.strokeStyle = "#222a30";
+  for (const plateY of [-half + 8, half - 18]) {
+    ctx.beginPath();
+    ctx.roundRect(-10, plateY, 20, 10, 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = "rgba(214, 224, 230, 0.72)";
+  ctx.lineWidth = 2;
+  for (const stripeX of [-half * 0.58 - 2, half * 0.58 - 2]) {
+    ctx.beginPath();
+    ctx.moveTo(stripeX, -half + 7);
+    ctx.lineTo(stripeX, half - 7);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.moveTo(-half + 7, -2);
+  ctx.lineTo(half - 7, -2);
+  ctx.stroke();
+
+  ctx.fillStyle = "#707981";
+  ctx.strokeStyle = "#222a30";
+  ctx.lineWidth = 2;
+  for (const cornerX of [-half + 5, half - 15]) {
+    for (const cornerY of [-half + 5, half - 15]) {
+      ctx.beginPath();
+      ctx.roundRect(cornerX, cornerY, 10, 10, 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+
+  ctx.fillStyle = "#d1d9df";
+  for (const [rivetX, rivetY] of [
+    [-half + 10, -half + 10],
+    [half - 10, -half + 10],
+    [-half + 10, half - 10],
+    [half - 10, half - 10],
+    [-half * 0.58, -half + 10],
+    [half * 0.58, -half + 10],
+    [-half * 0.58, half - 10],
+    [half * 0.58, half - 10],
+  ]) {
+    ctx.beginPath();
+    ctx.arc(rivetX, rivetY, 2.1, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.fillStyle = "#353c43";
+  for (const plateY of [-half + 13, half - 13]) {
+    ctx.beginPath();
+    ctx.arc(0, plateY, 2.1, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const lockGradient = ctx.createLinearGradient(-14, -12, 14, 12);
+  lockGradient.addColorStop(0, "#aeb8bf");
+  lockGradient.addColorStop(1, "#6d757d");
+  ctx.fillStyle = lockGradient;
+  ctx.strokeStyle = "#222a30";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(-11, -10);
+  ctx.lineTo(11, -10);
+  ctx.lineTo(15, -4);
+  ctx.lineTo(15, 7);
+  ctx.lineTo(11, 11);
+  ctx.lineTo(-11, 11);
+  ctx.lineTo(-15, 7);
+  ctx.lineTo(-15, -4);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = "#353c43";
+  ctx.beginPath();
+  ctx.arc(0, 0, 4.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillRect(-2, 2, 4, 7);
 }
 
 function drawCrates() {
-  for (const crate of crates) {
+  for (const crate of [...crates, ...previewCrates]) {
     const x = worldToScreenX(crate.x);
     const y = worldToScreenY(crate.y);
     const half = crate.size / 2;
+    const kind = crate.kind || "basic";
+    const sprite = crateSprites[kind] || crateSprites.basic;
 
     if (x < -80 || x > width + 80 || y < -80 || y > height + 80) {
       continue;
@@ -3309,16 +4601,44 @@ function drawCrates() {
     ctx.translate(x, y);
     ctx.rotate(crate.rotation);
 
-    if ((crate.kind || "basic") === "metal" || (crate.kind || "basic") === "gold") {
-      drawTreasureCrate(half, crate.kind || "basic");
+    if (kind === "royal") {
+      ctx.fillStyle = "rgba(169, 93, 255, 0.18)";
+      ctx.beginPath();
+      ctx.arc(0, 0, half * 1.45, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    if (sprite.complete && sprite.naturalWidth > 0) {
+      const spriteScale = kind === "basic" ? 1.65 : kind === "metal" ? 1.72 : 1.8;
+      const spriteWidth = crate.size * spriteScale;
+      const spriteHeight = spriteWidth * (sprite.naturalHeight / sprite.naturalWidth);
+      ctx.drawImage(sprite, -spriteWidth / 2, -spriteHeight / 2, spriteWidth, spriteHeight);
     } else {
-      ctx.fillStyle = "#b77a3d";
-      ctx.strokeStyle = "#5b3725";
+      ctx.save();
+      ctx.globalAlpha = 0.28;
+      ctx.fillStyle = "#000";
+      ctx.fillRect(-half + 5, -half + 6, crate.size, crate.size);
+      ctx.restore();
+      const wood = ctx.createLinearGradient(-half, -half, half, half);
+      wood.addColorStop(0, "#b87934");
+      wood.addColorStop(0.55, "#91602d");
+      wood.addColorStop(1, "#6a421f");
+      ctx.fillStyle = wood;
+      ctx.strokeStyle = "#50311d";
       ctx.lineWidth = 4;
       ctx.fillRect(-half, -half, crate.size, crate.size);
       ctx.strokeRect(-half, -half, crate.size, crate.size);
 
-      ctx.strokeStyle = "rgba(255, 223, 134, 0.76)";
+      ctx.strokeStyle = "rgba(255, 224, 166, 0.16)";
+      ctx.lineWidth = 2;
+      for (const offset of [-half * 0.52, 0, half * 0.52]) {
+        ctx.beginPath();
+        ctx.moveTo(-half + 6, offset);
+        ctx.lineTo(half - 6, offset + 3);
+        ctx.stroke();
+      }
+
+      ctx.strokeStyle = "rgba(255, 215, 134, 0.58)";
       ctx.lineWidth = 5;
       ctx.beginPath();
       ctx.moveTo(-half + 8, -half + 8);
@@ -3340,7 +4660,7 @@ function drawCrates() {
 }
 
 function drawPickups(time) {
-  for (const pickup of pickups) {
+  for (const pickup of [...pickups, ...previewPickups]) {
     const x = worldToScreenX(pickup.x);
     const y = worldToScreenY(pickup.y) + Math.sin(time * 0.005 + pickup.bob) * 4;
 
@@ -3441,29 +4761,88 @@ function drawPickups(time) {
       ctx.fillRect(-10, -4, 20, 8);
     } else if (pickup.type === "xp") {
       const value = pickup.value || xpDropValue;
-      const pulse = 1 + Math.sin(time * 0.01 + pickup.bob) * 0.08;
-      const isGoldXp = value >= goldCrateXpValue;
-      const isMetalXp = value >= metalCrateXpValue && !isGoldXp;
+      const pulse = 1 + Math.sin(time * 0.01 + pickup.bob) * 0.06;
+      const isAstralXp = value >= astralXpValue;
+      const isNovaXp = value >= novaXpValue && !isAstralXp;
+      const isGoldXp = value >= goldCrateXpValue && !isNovaXp && !isAstralXp;
+      const isMetalXp = value >= metalCrateXpValue && !isGoldXp && !isNovaXp && !isAstralXp;
+      const orbRadius = isAstralXp ? 13 : isNovaXp ? 12.5 : isGoldXp ? 11.5 : isMetalXp ? 10.5 : 8.5;
+      const outerGlow = isAstralXp
+        ? "rgba(255, 126, 54, 0.34)"
+        : isNovaXp
+          ? "rgba(255, 122, 217, 0.34)"
+          : isGoldXp
+            ? "rgba(144, 72, 255, 0.34)"
+            : isMetalXp
+              ? "rgba(0, 219, 255, 0.34)"
+              : "rgba(0, 126, 255, 0.32)";
+      const rim = isAstralXp ? "#ff7b23" : isNovaXp ? "#ff8fe9" : isGoldXp ? "#c47aff" : isMetalXp ? "#6ff5ff" : "#2f8fff";
+      const inner = isAstralXp ? "#f12618" : isNovaXp ? "#ef7fb5" : isGoldXp ? "#8d35ff" : isMetalXp ? "#12d9ff" : "#006cff";
+      const core = isAstralXp ? "#ffd4cf" : isNovaXp ? "#ffd8ef" : isGoldXp ? "#efd6ff" : isMetalXp ? "#d9ffff" : "#98d8ff";
       ctx.scale(pulse, pulse);
-      ctx.fillStyle = isGoldXp || isMetalXp ? "#ffcf5f" : "#1db9d8";
-      ctx.strokeStyle = isGoldXp ? "#fff0a8" : "#8df4df";
-      ctx.lineWidth = 3;
+
+      const glow = ctx.createRadialGradient(0, 0, orbRadius * 0.2, 0, 0, orbRadius * 2.3);
+      glow.addColorStop(0, outerGlow);
+      glow.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = glow;
       ctx.beginPath();
-      ctx.arc(0, 0, isGoldXp ? 13 : isMetalXp ? 10 : 10, 0, Math.PI * 2);
+      ctx.arc(0, 0, orbRadius * 2.3, 0, Math.PI * 2);
+      ctx.fill();
+
+      const orb = ctx.createRadialGradient(-4, -5, 1, 0, 0, orbRadius);
+      orb.addColorStop(0, core);
+      orb.addColorStop(0.28, inner);
+      orb.addColorStop(1, isAstralXp ? "#a61d13" : isNovaXp ? "#9b3d73" : isGoldXp ? "#4a128c" : isMetalXp ? "#066b8f" : "#05336f");
+      ctx.fillStyle = orb;
+      ctx.strokeStyle = rim;
+      ctx.lineWidth = isAstralXp || isNovaXp || isGoldXp ? 2.5 : 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, orbRadius, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
-      ctx.fillStyle = isGoldXp || isMetalXp ? "rgba(255, 255, 255, 0.76)" : "rgba(221, 255, 229, 0.78)";
+
+      ctx.strokeStyle = isAstralXp
+        ? "rgba(255, 247, 235, 0.34)"
+        : isNovaXp
+          ? "rgba(255, 226, 168, 0.34)"
+          : isGoldXp
+            ? "rgba(239, 214, 255, 0.34)"
+            : isMetalXp
+              ? "rgba(217, 255, 255, 0.32)"
+              : "rgba(152, 216, 255, 0.3)";
+      ctx.lineWidth = 1.2;
       ctx.beginPath();
-      ctx.arc(-4, -5, 3, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = isGoldXp
-        ? "rgba(255, 240, 168, 0.5)"
-        : isMetalXp
-          ? "rgba(141, 244, 223, 0.36)"
-          : "rgba(141, 244, 223, 0.38)";
+      ctx.arc(0, 0, orbRadius * 0.72, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(255, 255, 255, 0.86)";
       ctx.beginPath();
-      ctx.arc(4, 3, 4, 0, Math.PI * 2);
+      ctx.arc(-4, -5, isAstralXp ? 3.8 : isNovaXp || isGoldXp ? 3.4 : 3, 0, Math.PI * 2);
       ctx.fill();
+
+      ctx.fillStyle = isAstralXp
+        ? "rgba(182, 200, 255, 0.34)"
+        : isNovaXp
+          ? "rgba(255, 125, 181, 0.38)"
+          : isGoldXp
+            ? "rgba(224, 177, 255, 0.42)"
+            : isMetalXp
+              ? "rgba(111, 245, 255, 0.36)"
+              : "rgba(47, 143, 255, 0.34)";
+      ctx.beginPath();
+      ctx.arc(4, 4, orbRadius * 0.42, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (isAstralXp) {
+        ctx.fillStyle = "rgba(255, 247, 235, 0.78)";
+        for (let spark = 0; spark < 7; spark += 1) {
+          const angle = spark * (Math.PI * 2 / 7) - time * 0.0011;
+          const distance = orbRadius + 8 + Math.sin(time * 0.004 + spark) * 2;
+          ctx.beginPath();
+          ctx.arc(Math.cos(angle) * distance, Math.sin(angle) * distance, spark % 3 ? 1 : 1.4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
     } else if (pickup.type === "coin") {
       const coinKind = pickup.coinKind || "bronze";
       const fill = coinKind === "gold" ? "#ffcf5f" : coinKind === "silver" ? "#d7dde2" : "#b9783d";
@@ -3987,6 +5366,291 @@ function drawRailburstEffects() {
   }
 }
 
+function drawAreaSkillEffects() {
+  const now = performance.now();
+
+  if (player.staticCollapseHeld) {
+    const ratio = player.staticCollapseCharging ? clamp(player.staticCollapseCharge / staticCollapseChargeMax, 0, 1) : 0.08;
+    const angle = getAimAngle();
+    const orbX = player.x + Math.cos(angle) * (player.radius + 90);
+    const orbY = player.y + Math.sin(angle) * (player.radius + 90) - 14;
+    const x = worldToScreenX(orbX);
+    const y = worldToScreenY(orbY);
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+
+    if (player.staticCollapseCharging) {
+      const waves = [
+        { start: 0, end: 0.34, count: 5 },
+        { start: 0.28, end: 0.62, count: 7 },
+        { start: 0.56, end: 0.94, count: 10 },
+      ];
+
+      for (const [waveIndex, wave] of waves.entries()) {
+        if (ratio < wave.start) {
+          continue;
+        }
+
+        const waveProgress = clamp((ratio - wave.start) / (wave.end - wave.start), 0, 1);
+        for (let index = 0; index < wave.count; index += 1) {
+          const particleAngle = index / wave.count * Math.PI * 2 + now * 0.0019 + waveIndex * 0.42 + (index % 4) * 0.18;
+          const baseDistance = 116 - waveIndex * 10 + (index % 4) * 12;
+          const t = Math.min(1, Math.pow(waveProgress, 0.68) * (0.9 + (index % 3) * 0.05));
+          const distance = baseDistance * (1 - t);
+          const px = x + Math.cos(particleAngle) * distance;
+          const py = y + Math.sin(particleAngle) * distance;
+          const alpha = (1 - waveProgress * 0.2) * (0.22 + ratio * 0.62);
+          ctx.strokeStyle = `rgba(124, 215, 255, ${alpha})`;
+          ctx.lineWidth = 1.6 + ratio * 0.5;
+          ctx.beginPath();
+          ctx.moveTo(px, py);
+          ctx.lineTo(x + Math.cos(particleAngle) * distance * 0.72, y + Math.sin(particleAngle) * distance * 0.72);
+          ctx.stroke();
+
+          ctx.fillStyle = `rgba(245, 253, 255, ${0.16 + ratio * 0.78})`;
+          ctx.beginPath();
+          ctx.arc(px, py, 1.2 + (index % 3) * 0.45, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+
+    drawStaticCollapseOrb(x, y, 16 + ratio * 8, ratio);
+    ctx.restore();
+  }
+
+  for (const projectile of staticCollapseProjectiles) {
+    const x = worldToScreenX(projectile.x);
+    const y = worldToScreenY(projectile.y);
+    const ratio = projectile.chargeRatio || 0;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    drawStaticCollapseOrb(x, y, projectile.radius, ratio);
+    ctx.restore();
+  }
+
+  for (let index = staticCollapseEffects.length - 1; index >= 0; index -= 1) {
+    const effect = staticCollapseEffects[index];
+    const progress = clamp((now - effect.startedAt) / effect.duration, 0, 1);
+    const elapsed = now - effect.startedAt;
+    const charge = effect.burstOnly ? 1 : clamp(elapsed / (staticCollapseDelay * 1000), 0, 1);
+    const burst = effect.burstOnly ? clamp(elapsed / 420, 0, 1) : clamp((elapsed - staticCollapseDelay * 1000) / 420, 0, 1);
+    if (progress >= 1) {
+      staticCollapseEffects.splice(index, 1);
+      continue;
+    }
+    const x = worldToScreenX(effect.x);
+    const y = worldToScreenY(effect.y);
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+
+    for (const particle of effect.particles) {
+      const t = clamp((charge - particle.delay) / 0.78, 0, 1);
+      const swirl = particle.angle + particle.spin * (1 - t) + now * 0.002;
+      const distance = particle.distance * (1 - t);
+      const px = x + Math.cos(swirl) * distance;
+      const py = y + Math.sin(swirl) * distance;
+      const alpha = (1 - burst) * (0.18 + t * 0.78);
+      ctx.strokeStyle = `rgba(124, 215, 255, ${alpha * 0.75})`;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineTo(x + Math.cos(swirl) * distance * 0.72, y + Math.sin(swirl) * distance * 0.72);
+      ctx.stroke();
+      ctx.fillStyle = `rgba(245, 253, 255, ${alpha})`;
+      ctx.beginPath();
+      ctx.arc(px, py, particle.size * (0.7 + t * 0.6), 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const orbRadius = 20 + Math.sin(now * 0.016) * 2 + charge * 14;
+    ctx.fillStyle = `rgba(73, 172, 255, ${0.18 + charge * 0.22})`;
+    ctx.beginPath();
+    ctx.arc(x, y, orbRadius * 1.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = `rgba(124, 215, 255, ${0.58 + charge * 0.25})`;
+    ctx.beginPath();
+    ctx.arc(x, y, orbRadius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(245, 253, 255, ${0.72 * (1 - burst)})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, orbRadius + 8, 0, Math.PI * 2);
+    ctx.stroke();
+
+    if (burst > 0) {
+      for (const width of [20, 9, 3]) {
+        ctx.strokeStyle =
+          width === 20 ? `rgba(124, 215, 255, ${(1 - burst) * 0.42})` :
+          width === 9 ? `rgba(245, 253, 255, ${(1 - burst) * 0.88})` :
+          `rgba(141, 244, 223, ${1 - burst})`;
+        ctx.lineWidth = width * (1 - burst * 0.35);
+        ctx.beginPath();
+        ctx.arc(x, y, effect.radius * (0.18 + burst * 0.98), 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      for (let bolt = 0; bolt < 10; bolt += 1) {
+        const angle = bolt * (Math.PI * 2 / 10) + now * 0.003;
+        const inner = effect.radius * (0.32 + burst * 0.3);
+        const outer = effect.radius * (0.62 + burst * 0.58);
+        const points = createLightningPoints(
+          x + Math.cos(angle) * inner,
+          y + Math.sin(angle) * inner,
+          x + Math.cos(angle + 0.08) * outer,
+          y + Math.sin(angle + 0.08) * outer,
+          3,
+          18,
+        );
+        ctx.strokeStyle = `rgba(124, 215, 255, ${(1 - burst) * 0.95})`;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        points.forEach((point, pointIndex) => pointIndex ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y));
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  for (let index = arcPrisonEffects.length - 1; index >= 0; index -= 1) {
+    const effect = arcPrisonEffects[index];
+    const progress = clamp((now - effect.startedAt) / effect.duration, 0, 1);
+    const reveal = clamp(progress / 0.18, 0, 1);
+    const fade = clamp((1 - progress) / 0.22, 0, 1);
+    const alpha = Math.min(reveal, fade);
+    if (progress >= 1) {
+      arcPrisonEffects.splice(index, 1);
+      continue;
+    }
+    const x = worldToScreenX(effect.x);
+    const y = worldToScreenY(effect.y);
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+
+    const vertices = Array.from({ length: 6 }, (_, point) => {
+      const angle = -Math.PI / 2 + point * Math.PI / 3;
+      return {
+        x: x + Math.cos(angle) * effect.radius,
+        y: y + Math.sin(angle) * effect.radius,
+      };
+    });
+
+    ctx.fillStyle = `rgba(30, 116, 180, ${0.05 * alpha})`;
+    ctx.beginPath();
+    vertices.forEach((point, pointIndex) => pointIndex ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y));
+    ctx.closePath();
+    ctx.fill();
+
+    for (const width of [14, 6, 2]) {
+      ctx.strokeStyle =
+        width === 14 ? `rgba(124, 215, 255, ${0.28 * alpha})` :
+        width === 6 ? `rgba(124, 215, 255, ${0.74 * alpha})` :
+        `rgba(245, 253, 255, ${0.95 * alpha})`;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      vertices.forEach((point, pointIndex) => pointIndex ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y));
+      ctx.closePath();
+      ctx.stroke();
+    }
+
+    for (let edge = 0; edge < vertices.length; edge += 1) {
+      const a = vertices[edge];
+      const b = vertices[(edge + 1) % vertices.length];
+      const points = createLightningPoints(a.x, a.y, b.x, b.y, 5, 18 + Math.sin(now * 0.02 + edge) * 7);
+      ctx.strokeStyle = `rgba(141, 244, 223, ${(0.48 + Math.sin(now * 0.018 + edge) * 0.32) * alpha})`;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      points.forEach((point, pointIndex) => pointIndex ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y));
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = `rgba(245, 253, 255, ${0.18 * alpha})`;
+    ctx.lineWidth = 1.5;
+    for (let spoke = 0; spoke < 6; spoke += 1) {
+      const vertex = vertices[spoke];
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(vertex.x, vertex.y);
+      ctx.stroke();
+    }
+
+    for (const spark of effect.sparks) {
+      const angle = spark.angle + now * 0.003 * spark.speed;
+      const sx = x + Math.cos(angle) * effect.radius;
+      const sy = y + Math.sin(angle) * effect.radius;
+      ctx.strokeStyle = `rgba(245, 253, 255, ${0.55 * alpha})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + Math.cos(angle + Math.PI / 2) * spark.length, sy + Math.sin(angle + Math.PI / 2) * spark.length);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  for (let index = stormRecallEffects.length - 1; index >= 0; index -= 1) {
+    const effect = stormRecallEffects[index];
+    const progress = clamp((now - effect.startedAt) / effect.duration, 0, 1);
+    const pop = 1 - Math.pow(1 - progress, 3);
+    const fade = 1 - progress;
+    if (progress >= 1) {
+      stormRecallEffects.splice(index, 1);
+      continue;
+    }
+    const x = worldToScreenX(effect.x);
+    const y = worldToScreenY(effect.y);
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+
+    ctx.fillStyle = `rgba(245, 253, 255, ${0.42 * fade})`;
+    ctx.beginPath();
+    ctx.arc(x, y, effect.radius * (0.14 + pop * 0.12), 0, Math.PI * 2);
+    ctx.fill();
+
+    for (const spark of effect.sparks || []) {
+      const sparkDistance = spark.distance * pop;
+      const sx = x + Math.cos(spark.angle) * sparkDistance;
+      const sy = y + Math.sin(spark.angle) * sparkDistance;
+      ctx.fillStyle = `rgba(255, 223, 134, ${0.72 * fade})`;
+      ctx.beginPath();
+      ctx.arc(sx, sy, spark.size * fade, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    for (const width of [16, 5, 2]) {
+      ctx.strokeStyle =
+        width === 16 ? `rgba(255, 223, 134, ${0.24 * fade})` :
+        width === 5 ? `rgba(124, 215, 255, ${0.72 * fade})` :
+        `rgba(245, 253, 255, ${0.92 * fade})`;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.arc(x, y, effect.radius * (0.18 + pop * 0.82), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+function drawStaticCollapseOrb(x, y, radius, ratio) {
+  ctx.fillStyle = `rgba(124, 215, 255, ${0.2 + ratio * 0.22})`;
+  ctx.beginPath();
+  ctx.arc(x, y, radius * (1.85 + ratio * 0.34), 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = `rgba(214, 247, 255, ${0.38 + ratio * 0.44})`;
+  ctx.lineWidth = 3 + ratio * 2;
+  ctx.beginPath();
+  ctx.arc(x, y, radius * (1.06 + ratio * 0.18), 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = `rgba(${Math.round(74 + ratio * 108)}, ${Math.round(160 + ratio * 76)}, ${Math.round(241 + ratio * 14)}, ${0.38 + ratio * 0.38})`;
+  ctx.beginPath();
+  ctx.arc(x, y, radius * (0.96 + ratio * 0.18), 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = `rgba(245, 253, 255, ${0.72 + ratio * 0.28})`;
+  ctx.beginPath();
+  ctx.arc(x, y, radius * (0.56 + ratio * 0.14), 0, Math.PI * 2);
+  ctx.fill();
+}
+
 function drawPlayer(time) {
   const x = worldToScreenX(player.x);
   const y = worldToScreenY(player.y);
@@ -4124,8 +5788,10 @@ function drawMinimap() {
   const x = width - mapSize - padding;
   const y = height - mapSize - padding;
   const scale = mapSize / world.width;
-  const viewW = width * scale;
-  const viewH = height * scale;
+  const viewWorldW = width / camera.zoom;
+  const viewWorldH = height / camera.zoom;
+  const viewW = viewWorldW * scale;
+  const viewH = viewWorldH * scale;
 
   ctx.save();
   ctx.globalAlpha = 0.96;
@@ -4160,7 +5826,33 @@ function drawMinimap() {
   }
 
   ctx.strokeStyle = "rgba(246, 242, 233, 0.62)";
-  ctx.strokeRect(x + (camera.x - width / 2) * scale, y + (camera.y - height / 2) * scale, viewW, viewH);
+  ctx.strokeRect(x + (camera.x - viewWorldW / 2) * scale, y + (camera.y - viewWorldH / 2) * scale, viewW, viewH);
+
+  ctx.fillStyle = "#ff5f7f";
+  ctx.strokeStyle = "#101214";
+  ctx.lineWidth = 1.5;
+  for (const remote of remotePlayers.values()) {
+    if (remote.health <= 0) {
+      continue;
+    }
+
+    const remoteX = Number.isFinite(remote.renderX) ? remote.renderX : remote.x;
+    const remoteY = Number.isFinite(remote.renderY) ? remote.renderY : remote.y;
+    if (!Number.isFinite(remoteX) || !Number.isFinite(remoteY)) {
+      continue;
+    }
+
+    ctx.beginPath();
+    ctx.arc(
+      x + clamp(remoteX, 0, world.width) * scale,
+      y + clamp(remoteY, 0, world.height) * scale,
+      4,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+    ctx.stroke();
+  }
 
   ctx.fillStyle = "#58a6ff";
   ctx.strokeStyle = "#101214";
@@ -4200,6 +5892,7 @@ function draw(time) {
   drawTeleportEffects();
   drawLightningEffects();
   drawRailburstEffects();
+  drawAreaSkillEffects();
   if (!deathPending) {
     drawPlayer(time);
   }
@@ -4242,6 +5935,20 @@ async function startGame() {
   getAudioContext();
 }
 
+function restartGame() {
+  if (gameStarted) {
+    return;
+  }
+
+  resetGameState({ preserveProgress: true });
+  gameStarted = true;
+  sendNetwork("respawn", { state: getPlayerSnapshot() });
+  lastTime = performance.now();
+  document.body.classList.remove("game-pending");
+  restartScreen?.classList.add("hidden");
+  getAudioContext();
+}
+
 function tick(time) {
   const delta = Math.min((time - lastTime) / 1000, 0.033);
   lastTime = time;
@@ -4254,8 +5961,14 @@ function tick(time) {
   requestAnimationFrame(tick);
 }
 
-window.addEventListener("resize", resize);
+window.addEventListener("resize", () => {
+  resize();
+  if (upgradePanel?.style.left && upgradePanel?.style.top) {
+    placeUpgradePanel(parseFloat(upgradePanel.style.left), parseFloat(upgradePanel.style.top));
+  }
+});
 startButton.addEventListener("click", startGame);
+restartButton?.addEventListener("click", restartGame);
 chatForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   submitChat();
@@ -4268,7 +5981,47 @@ chatInput?.addEventListener("keydown", (event) => {
     chatInput.blur();
   }
 });
+
+upgradePanel?.querySelector(".upgrade-title")?.addEventListener("pointerdown", (event) => {
+  if (event.button !== 0) {
+    return;
+  }
+
+  const rect = upgradePanel.getBoundingClientRect();
+  upgradePanelDrag = {
+    pointerId: event.pointerId,
+    offsetX: event.clientX - rect.left,
+    offsetY: event.clientY - rect.top,
+  };
+  upgradePanel.classList.add("dragging");
+  upgradePanel.setPointerCapture?.(event.pointerId);
+  event.preventDefault();
+  event.stopPropagation();
+});
+
+window.addEventListener("pointermove", (event) => {
+  if (!upgradePanelDrag) {
+    return;
+  }
+
+  placeUpgradePanel(event.clientX - upgradePanelDrag.offsetX, event.clientY - upgradePanelDrag.offsetY);
+});
+
+window.addEventListener("pointerup", (event) => {
+  if (!upgradePanelDrag || event.pointerId !== upgradePanelDrag.pointerId) {
+    return;
+  }
+
+  upgradePanelDrag = null;
+  upgradePanel?.classList.remove("dragging");
+});
+
 window.addEventListener("keydown", (event) => {
+  if ((event.ctrlKey || event.metaKey) && ["+", "-", "=", "0"].includes(event.key)) {
+    event.preventDefault();
+    return;
+  }
+
   if (event.target === chatInput) {
     return;
   }
@@ -4315,7 +6068,7 @@ window.addEventListener("keydown", (event) => {
   }
 
   if (event.key.toLowerCase() === "q") {
-    startRailburst();
+    useEquippedSkill("q");
     return;
   }
 
@@ -4325,12 +6078,17 @@ window.addEventListener("keydown", (event) => {
   }
 
   if (event.key.toLowerCase() === "f") {
-    swapWithThrownKnife();
+    useEquippedSkill("f");
     return;
   }
 
   if (event.key.toLowerCase() === "g") {
-    useLightningThrust();
+    useEquippedSkill("g");
+    return;
+  }
+
+  if (event.key.toLowerCase() === "e") {
+    useEquippedSkill("e");
     return;
   }
 
@@ -4372,6 +6130,10 @@ window.addEventListener("mousedown", (event) => {
   }
 
   if (event.button === 0) {
+    if (player.staticCollapseHeld) {
+      startStaticCollapseCharge();
+      return;
+    }
     mouse.down = true;
   }
 });
@@ -4388,6 +6150,10 @@ window.addEventListener("mouseup", (event) => {
   }
 
   if (event.button === 0) {
+    if (player.staticCollapseHeld && player.staticCollapseCharging) {
+      releaseStaticCollapse();
+      return;
+    }
     mouse.down = false;
   }
 });
@@ -4396,12 +6162,45 @@ window.addEventListener("blur", () => {
   mouse.rightDown = false;
   player.knifeCharging = false;
   player.knifeCharge = 0;
+  player.staticCollapseHeld = false;
+  player.staticCollapseCharging = false;
+  player.staticCollapseCharge = 0;
+  upgradePanelDrag = null;
+  upgradePanel?.classList.remove("dragging");
+  weaponPointerDrag = null;
+  removeWeaponDragPreview();
+  clearWeaponDragTarget();
   keys.clear();
 });
 window.addEventListener("contextmenu", (event) => {
   event.preventDefault();
 });
+window.addEventListener(
+  "wheel",
+  (event) => {
+    if (event.ctrlKey || event.metaKey) {
+      event.preventDefault();
+    }
+  },
+  { passive: false },
+);
 for (const slot of inventorySlots) {
+  slot.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    weaponPointerDrag = {
+      fromSlot: Number(slot.dataset.slot),
+      startX: event.clientX,
+      startY: event.clientY,
+      pointerId: event.pointerId,
+      active: false,
+    };
+    slot.setPointerCapture?.(event.pointerId);
+  });
   slot.addEventListener("mousedown", (event) => {
     event.stopPropagation();
   });
@@ -4412,28 +6211,43 @@ for (const slot of inventorySlots) {
     event.preventDefault();
     event.stopPropagation();
   });
-  slot.addEventListener("click", () => {
+  slot.addEventListener("click", (event) => {
+    if (suppressSlotClick) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     selectWeapon(Number(slot.dataset.slot));
   });
   slot.addEventListener("dragstart", (event) => {
+    event.preventDefault();
     draggedSlot = Number(slot.dataset.slot);
     slot.classList.add("dragging");
     event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", String(draggedSlot));
+    event.dataTransfer.setData("application/core-drift-weapon-slot", String(draggedSlot));
+    event.dataTransfer.setData("text/plain", `weapon:${draggedSlot}`);
   });
   slot.addEventListener("dragover", (event) => {
     event.preventDefault();
     slot.classList.add("drop-target");
     event.dataTransfer.dropEffect = "move";
   });
+  slot.addEventListener("dragenter", (event) => {
+    event.preventDefault();
+    slot.classList.add("drop-target");
+  });
   slot.addEventListener("dragleave", () => {
     slot.classList.remove("drop-target");
   });
   slot.addEventListener("drop", (event) => {
     event.preventDefault();
-    const fromSlot = draggedSlot || Number(event.dataTransfer.getData("text/plain"));
+    const transferSlot = event.dataTransfer.getData("application/core-drift-weapon-slot");
+    const fallbackSlot = event.dataTransfer.getData("text/plain").replace("weapon:", "");
+    const fromSlot = draggedSlot ?? Number(transferSlot || fallbackSlot);
     const toSlot = Number(slot.dataset.slot);
-    swapSlots(fromSlot, toSlot);
+    if (Number.isFinite(fromSlot) && fromSlot >= 1 && fromSlot <= 3) {
+      swapSlots(fromSlot, toSlot);
+    }
     slot.classList.remove("drop-target");
   });
   slot.addEventListener("dragend", () => {
@@ -4441,6 +6255,110 @@ for (const slot of inventorySlots) {
 
     for (const inventorySlot of inventorySlots) {
       inventorySlot.classList.remove("dragging", "drop-target");
+    }
+  });
+}
+
+window.addEventListener("pointermove", (event) => {
+  if (!weaponPointerDrag) {
+    return;
+  }
+
+  const distance = Math.hypot(event.clientX - weaponPointerDrag.startX, event.clientY - weaponPointerDrag.startY);
+  if (!weaponPointerDrag.active && distance < 6) {
+    return;
+  }
+
+  weaponPointerDrag.active = true;
+  suppressSlotClick = true;
+  clearWeaponDragTarget();
+
+  const fromElement = [...inventorySlots].find((candidate) => Number(candidate.dataset.slot) === weaponPointerDrag.fromSlot);
+  fromElement?.classList.add("dragging");
+  createWeaponDragPreview(fromElement);
+  updateWeaponDragPreview(event.clientX, event.clientY);
+
+  const target = getInventorySlotFromPoint(event.clientX, event.clientY);
+  if (target) {
+    target.classList.add("drop-target");
+  }
+});
+
+window.addEventListener("pointerup", (event) => {
+  if (!weaponPointerDrag) {
+    return;
+  }
+
+  const { fromSlot, active } = weaponPointerDrag;
+  const target = active ? getInventorySlotFromPoint(event.clientX, event.clientY) : null;
+  const toSlot = target ? Number(target.dataset.slot) : null;
+
+  if (active && Number.isFinite(toSlot) && toSlot >= 1 && toSlot <= 3) {
+    swapSlots(fromSlot, toSlot);
+  } else if (!active) {
+    selectWeapon(fromSlot);
+  }
+
+  suppressSlotClick = true;
+  weaponPointerDrag = null;
+  clearWeaponDragTarget();
+  removeWeaponDragPreview();
+  window.setTimeout(() => {
+    suppressSlotClick = false;
+  }, 0);
+});
+
+for (const [slotKey, element] of Object.entries(skillSlotElements)) {
+  if (!element) {
+    continue;
+  }
+
+  element.draggable = true;
+  element.addEventListener("mousedown", (event) => event.stopPropagation());
+  element.addEventListener("mouseup", (event) => event.stopPropagation());
+  element.addEventListener("click", (event) => {
+    const clearButton = event.target.closest("[data-clear-skill]");
+    if (clearButton) {
+      clearSkillSlot(clearButton.dataset.clearSkill);
+    }
+  });
+  element.addEventListener("dragstart", (event) => {
+    if (!player.skillSlots[slotKey]) {
+      event.preventDefault();
+      return;
+    }
+    draggedSkillSlot = slotKey;
+    element.classList.add("dragging");
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("application/core-drift-skill-slot", slotKey);
+    event.dataTransfer.setData("text/plain", `skill:${slotKey}`);
+  });
+  element.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    element.classList.add("drop-target");
+    event.dataTransfer.dropEffect = "move";
+  });
+  element.addEventListener("dragenter", (event) => {
+    event.preventDefault();
+    element.classList.add("drop-target");
+  });
+  element.addEventListener("dragleave", () => {
+    element.classList.remove("drop-target");
+  });
+  element.addEventListener("drop", (event) => {
+    event.preventDefault();
+    const transferSlot = event.dataTransfer.getData("application/core-drift-skill-slot");
+    const fallbackSlot = event.dataTransfer.getData("text/plain").replace("skill:", "");
+    const fromSlot = draggedSkillSlot || transferSlot || fallbackSlot;
+    if (skillSlotKeys.includes(fromSlot)) {
+      swapSkillSlots(fromSlot, slotKey);
+    }
+    element.classList.remove("drop-target");
+  });
+  element.addEventListener("dragend", () => {
+    draggedSkillSlot = null;
+    for (const slotElement of Object.values(skillSlotElements)) {
+      slotElement?.classList.remove("dragging", "drop-target");
     }
   });
 }
@@ -4467,3 +6385,12 @@ updateCoinHud();
 updateSkillHud();
 updateUpgradePanel();
 requestAnimationFrame(tick);
+  if (!hasAnyUnlockedSkillSlot()) {
+    setShopMessage("Unlock your first skill slot at Lv 25.");
+    return;
+  }
+
+  if (!hasAnyUnlockedSkillSlot()) {
+    setShopMessage("Unlock your first skill slot at Lv 25.");
+    return;
+  }
