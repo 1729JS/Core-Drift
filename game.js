@@ -1937,6 +1937,11 @@ function handleShopSkillClick(skill) {
     return;
   }
 
+  if (!hasAnyUnlockedSkillSlot()) {
+    setShopMessage("Unlock your first skill slot at Lv 25.");
+    return;
+  }
+
   if (!player.ownedSkills.includes(skill)) {
     setShopMessage("Buy this skill first.");
     return;
@@ -1952,6 +1957,11 @@ function buyShopSkill(skill) {
   const price = skillShopPrices[skill];
 
   if (!price || !skillDefinitions[skill]) {
+    return;
+  }
+
+  if (!hasAnyUnlockedSkillSlot()) {
+    setShopMessage("Unlock your first skill slot at Lv 25.");
     return;
   }
 
@@ -6385,12 +6395,3 @@ updateCoinHud();
 updateSkillHud();
 updateUpgradePanel();
 requestAnimationFrame(tick);
-  if (!hasAnyUnlockedSkillSlot()) {
-    setShopMessage("Unlock your first skill slot at Lv 25.");
-    return;
-  }
-
-  if (!hasAnyUnlockedSkillSlot()) {
-    setShopMessage("Unlock your first skill slot at Lv 25.");
-    return;
-  }
