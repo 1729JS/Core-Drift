@@ -2780,11 +2780,6 @@ function syncBulletImpact(message) {
     const nextX = Number(message.x);
     const nextY = Number(message.y);
 
-    if (Number.isFinite(nextX) && Number.isFinite(nextY)) {
-      bullet.x = nextX;
-      bullet.y = nextY;
-    }
-
     bullet.damage = Math.max(0, Number(message.damage || 0));
 
     if (message.spent || bullet.damage <= 0) {
