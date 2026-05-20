@@ -74,6 +74,13 @@ const crateTiers = {
   royal: { count: 5, size: 84, hitboxSize: 134, health: 1500, xp: 2500, coinKind: "gold", coinValue: 300 },
 };
 const crateTierOrder = ["basic", "bronze", "metal", "gold", "royal"];
+const crateSpriteRatios = {
+  basic: 1,
+  bronze: 1,
+  metal: 1,
+  gold: 1,
+  royal: 1,
+};
 const crateRespawnSeconds = 5;
 const corpseLifetime = 500;
 const pickupLifetimeMs = 5 * 60 * 1000;
@@ -179,6 +186,8 @@ const coinValues = {
   bronze: 5,
   silver: 10,
   gold: 100,
+  bill: 1000,
+  bigBill: 10000,
 };
 const upgradeSteps = {
   speed: { maxSpeed: 35, acceleration: 90 },
@@ -361,6 +370,7 @@ let nextLocalBulletId = 1;
 let shopToastTimer = 0;
 let activeAccount = null;
 let saveTimer = 0;
+let hitboxDebug = false;
 
 const remotePlayers = new Map();
 const remoteBullets = [];
@@ -624,10 +634,13 @@ function lerpAngle(current, target, amount) {
 }
 
 function circleHitsBox(circle, box) {
-  const half = getCrateHitboxSize(box) / 2;
-  const closestX = clamp(circle.x, box.x - half, box.x + half);
-  const closestY = clamp(circle.y, box.y - half, box.y + half);
-  return Math.hypot(circle.x - closestX, circle.y - closestY) <= circle.radius;
+  const local = worldToCrateLocal(circle.x, circle.y, box);
+  const dimensions = getCrateHitboxDimensions(box);
+  const halfWidth = dimensions.width / 2;
+  const halfHeight = dimensions.height / 2;
+  const closestX = clamp(local.x, -halfWidth, halfWidth);
+  const closestY = clamp(local.y, -halfHeight, halfHeight);
+  return Math.hypot(local.x - closestX, local.y - closestY) <= circle.radius;
 }
 
 function segmentHitsCircle(x1, y1, x2, y2, cx, cy, radius) {
@@ -646,13 +659,17 @@ function segmentHitsCircle(x1, y1, x2, y2, cx, cy, radius) {
 }
 
 function segmentHitsBox(x1, y1, x2, y2, box, radius = 0) {
-  const half = getCrateHitboxSize(box) / 2 + radius;
-  const minX = box.x - half;
-  const maxX = box.x + half;
-  const minY = box.y - half;
-  const maxY = box.y + half;
-  const dx = x2 - x1;
-  const dy = y2 - y1;
+  const start = worldToCrateLocal(x1, y1, box);
+  const end = worldToCrateLocal(x2, y2, box);
+  const dimensions = getCrateHitboxDimensions(box);
+  const halfWidth = dimensions.width / 2 + radius;
+  const halfHeight = dimensions.height / 2 + radius;
+  const minX = -halfWidth;
+  const maxX = halfWidth;
+  const minY = -halfHeight;
+  const maxY = halfHeight;
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
   let tMin = 0;
   let tMax = 1;
 
@@ -670,20 +687,59 @@ function segmentHitsBox(x1, y1, x2, y2, box, radius = 0) {
     return tMin <= tMax;
   };
 
-  return clip(x1, dx, minX, maxX) && clip(y1, dy, minY, maxY);
+  return clip(start.x, dx, minX, maxX) && clip(start.y, dy, minY, maxY);
 }
 
 function getBoxHitPoint(circle, box) {
-  const half = getCrateHitboxSize(box) / 2;
+  const local = worldToCrateLocal(circle.x, circle.y, box);
+  const dimensions = getCrateHitboxDimensions(box);
+  const halfWidth = dimensions.width / 2;
+  const halfHeight = dimensions.height / 2;
 
-  return {
-    x: clamp(circle.x, box.x - half, box.x + half),
-    y: clamp(circle.y, box.y - half, box.y + half),
-  };
+  return crateLocalToWorld(clamp(local.x, -halfWidth, halfWidth), clamp(local.y, -halfHeight, halfHeight), box);
 }
 
 function getCrateHitboxSize(crate) {
-  return crate.hitboxSize || crateTiers[crate.kind || "basic"]?.hitboxSize || crate.size;
+  const dimensions = getCrateHitboxDimensions(crate);
+  return Math.max(dimensions.width, dimensions.height);
+}
+
+function getCrateSpriteScale(kind) {
+  if (kind === "basic") return 1.65;
+  if (kind === "metal") return 1.72;
+  return 1.8;
+}
+
+function getCrateHitboxDimensions(crate) {
+  const kind = crate.kind || "basic";
+  const width = crate.size * getCrateSpriteScale(kind);
+  const height = width * (crateSpriteRatios[kind] || 1);
+
+  return { width, height };
+}
+
+function worldToCrateLocal(x, y, crate) {
+  const angle = -(crate.rotation || 0);
+  const dx = x - crate.x;
+  const dy = y - crate.y;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+
+  return {
+    x: dx * cos - dy * sin,
+    y: dx * sin + dy * cos,
+  };
+}
+
+function crateLocalToWorld(x, y, crate) {
+  const angle = crate.rotation || 0;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+
+  return {
+    x: crate.x + x * cos - y * sin,
+    y: crate.y + x * sin + y * cos,
+  };
 }
 
 function distanceToArcPrisonEdge(px, py, cx, cy, radius) {
@@ -862,13 +918,6 @@ function getXpDropValues(totalValue) {
   let remaining = Math.max(0, Math.round(totalValue));
   const values = [];
 
-  for (const value of [goldCrateXpValue, metalCrateXpValue, xpDropValue]) {
-    while (remaining >= value) {
-      values.push(value);
-      remaining -= value;
-    }
-  }
-
   if (remaining > 0) {
     values.push(remaining);
   }
@@ -880,7 +929,7 @@ function getCoinDropEntries(totalValue) {
   let remaining = Math.max(0, Math.round(totalValue));
   const entries = [];
 
-  for (const [coinKind, value] of [["gold", coinValues.gold], ["silver", coinValues.silver], ["bronze", coinValues.bronze]]) {
+  for (const [coinKind, value] of [["bigBill", coinValues.bigBill], ["bill", coinValues.bill], ["gold", coinValues.gold], ["silver", coinValues.silver], ["bronze", coinValues.bronze]]) {
     while (remaining >= value) {
       entries.push({ coinKind, value });
       remaining -= value;
@@ -2086,6 +2135,7 @@ function spawnPickup(x, y, forcedType = null, data = {}) {
     x,
     y,
     type,
+    predicted: data.predicted || false,
     count: data.count,
     ammo: data.ammo,
     magAmmo: data.magAmmo,
@@ -2149,7 +2199,9 @@ function handleLocalDeath() {
   player.knifeCharging = false;
   player.knifeCharge = 0;
   addCorpse({ x: player.x, y: player.y, name: player.name });
-  dropAllLoot(player.x, player.y);
+  if (!sharedWorldActive) {
+    dropAllLoot(player.x, player.y);
+  }
   saveRespawnProfileAfterDeath();
   sendNetwork("dead", {});
 
@@ -2182,6 +2234,10 @@ function getPickupWeaponAmmo(item, weaponName) {
 }
 
 function canCollectPickup(item) {
+  if (item?.predicted) {
+    return false;
+  }
+
   const type = getPickupType(item);
 
   if (type === "armor") {
@@ -2712,7 +2768,10 @@ function connectMultiplayer() {
 
 function syncBulletImpact(message) {
   for (const list of [bullets, remoteBullets]) {
-    const bulletIndex = list.findIndex((candidate) => candidate.id === message.bulletId && candidate.ownerId === message.ownerId);
+    const bulletIndex = list.findIndex((candidate) => (
+      candidate.id === message.bulletId &&
+      (candidate.ownerId === message.ownerId || !candidate.ownerId)
+    ));
     if (bulletIndex < 0) {
       continue;
     }
@@ -3293,6 +3352,7 @@ function fireBullet() {
 
   const bullet = {
     id: `${localClientId || "local"}-${nextLocalBulletId++}`,
+    ownerId: localClientId,
     x: player.x + Math.cos(angle) * barrelLength,
     y: player.y + Math.sin(angle) * barrelLength,
     vx: Math.cos(angle) * weapon.bulletSpeed + player.vx * 0.18,
@@ -3422,6 +3482,7 @@ function throwKnife() {
 
   const bullet = {
     id: `${localClientId || "local"}-${nextLocalBulletId++}`,
+    ownerId: localClientId,
     x: player.x + Math.cos(angle) * (player.radius + 18),
     y: player.y + Math.sin(angle) * (player.radius + 18),
     vx: Math.cos(angle) * speed + player.vx * 0.12,
@@ -3672,6 +3733,8 @@ function update(delta) {
 
     const previousX = bullet.x;
     const previousY = bullet.y;
+    bullet.previousX = previousX;
+    bullet.previousY = previousY;
     bullet.x += bullet.vx * delta;
     bullet.y += bullet.vy * delta;
     bullet.life -= delta;
@@ -3763,6 +3826,10 @@ function update(delta) {
       dropPickupAt(knifeDropPoint?.x ?? bullet.x, knifeDropPoint?.y ?? bullet.y, bullet.pickup || { type: "knife", count: 1 });
     }
 
+    if (bullet.weapon === "knife" && bulletSpent && knifeDropPoint && sharedWorldActive) {
+      spawnPickup(knifeDropPoint.x, knifeDropPoint.y, "knife", { count: 1, predicted: true, expiresAt: Date.now() + 900 });
+    }
+
     if (bulletSpent || expired) {
       bullets.splice(index, 1);
     }
@@ -3773,6 +3840,8 @@ function update(delta) {
 
     const previousX = bullet.x;
     const previousY = bullet.y;
+    bullet.previousX = previousX;
+    bullet.previousY = previousY;
     bullet.x += bullet.vx * delta;
     bullet.y += bullet.vy * delta;
     bullet.life -= delta;
@@ -4619,7 +4688,7 @@ function drawCrates() {
     }
 
     if (sprite.complete && sprite.naturalWidth > 0) {
-      const spriteScale = kind === "basic" ? 1.65 : kind === "metal" ? 1.72 : 1.8;
+      const spriteScale = getCrateSpriteScale(kind);
       const spriteWidth = crate.size * spriteScale;
       const spriteHeight = spriteWidth * (sprite.naturalHeight / sprite.naturalWidth);
       ctx.drawImage(sprite, -spriteWidth / 2, -spriteHeight / 2, spriteWidth, spriteHeight);
@@ -4666,7 +4735,37 @@ function drawCrates() {
     ctx.fillRect(-24, half + 8, 48 * hpRatio, 6);
 
     ctx.restore();
+
+    if (hitboxDebug) {
+      drawCrateDebugOverlay(crate);
+    }
   }
+}
+
+function drawCrateDebugOverlay(crate) {
+  const x = worldToScreenX(crate.x);
+  const y = worldToScreenY(crate.y);
+  const dimensions = getCrateHitboxDimensions(crate);
+  const boxWidth = dimensions.width * camera.zoom;
+  const boxHeight = dimensions.height * camera.zoom;
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(crate.rotation || 0);
+  ctx.strokeStyle = (crate.kind || "basic") === "bronze" ? "rgba(255, 92, 128, 0.96)" : "rgba(141, 244, 223, 0.78)";
+  ctx.fillStyle = (crate.kind || "basic") === "bronze" ? "rgba(255, 92, 128, 0.09)" : "rgba(141, 244, 223, 0.06)";
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([6, 4]);
+  ctx.fillRect(-boxWidth / 2, -boxHeight / 2, boxWidth, boxHeight);
+  ctx.strokeRect(-boxWidth / 2, -boxHeight / 2, boxWidth, boxHeight);
+  ctx.setLineDash([]);
+  ctx.rotate(-(crate.rotation || 0));
+  ctx.fillStyle = "rgba(246, 242, 233, 0.92)";
+  ctx.font = "800 10px Inter, system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(`${crate.kind || "basic"} ${Math.round(crate.hp)}/${crate.maxHp}`, 0, -boxHeight / 2 - 10);
+  ctx.restore();
 }
 
 function drawPickups(time) {
@@ -4855,6 +4954,37 @@ function drawPickups(time) {
       }
     } else if (pickup.type === "coin") {
       const coinKind = pickup.coinKind || "bronze";
+      if (coinKind === "bill" || coinKind === "bigBill") {
+        const isBigBill = coinKind === "bigBill";
+        ctx.save();
+        ctx.rotate(-0.16);
+        ctx.fillStyle = isBigBill ? "#f2ddb2" : "#bdebd6";
+        ctx.strokeStyle = isBigBill ? "#8b5e14" : "#2d6f62";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.roundRect(-20, -11, 40, 22, 4);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = isBigBill ? "rgba(139, 94, 20, 0.16)" : "rgba(45, 111, 98, 0.16)";
+        ctx.fillRect(-13, -7, 26, 14);
+        ctx.strokeStyle = isBigBill ? "rgba(139, 94, 20, 0.42)" : "rgba(45, 111, 98, 0.42)";
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.arc(0, 0, isBigBill ? 5.6 : 5, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = isBigBill ? "#8b5e14" : "#2d6f62";
+        ctx.font = "900 7px Inter, system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(isBigBill ? "10000" : "1000", 0, 0);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.65)";
+        ctx.beginPath();
+        ctx.arc(-13, -7, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        ctx.restore();
+        continue;
+      }
       const fill = coinKind === "gold" ? "#ffcf5f" : coinKind === "silver" ? "#d7dde2" : "#b9783d";
       const stroke = coinKind === "gold" ? "#8b5e14" : coinKind === "silver" ? "#68727c" : "#5b3725";
       ctx.fillStyle = fill;
@@ -4883,6 +5013,12 @@ function drawBullets() {
   for (const bullet of bullets) {
     const x = worldToScreenX(bullet.x);
     const y = worldToScreenY(bullet.y);
+    const previousX = worldToScreenX(bullet.previousX ?? bullet.x);
+    const previousY = worldToScreenY(bullet.previousY ?? bullet.y);
+
+    if (hitboxDebug) {
+      drawBulletDebugOverlay(previousX, previousY, x, y, bullet);
+    }
 
     if (bullet.weapon === "knife") {
       ctx.save();
@@ -4945,6 +5081,21 @@ function drawRemoteBullets() {
     ctx.fill();
     ctx.stroke();
   }
+}
+
+function drawBulletDebugOverlay(previousX, previousY, x, y, bullet) {
+  ctx.save();
+  ctx.strokeStyle = bullet.weapon === "knife" ? "rgba(255, 156, 181, 0.9)" : "rgba(255, 235, 122, 0.86)";
+  ctx.fillStyle = "rgba(245, 253, 255, 0.52)";
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(previousX, previousY);
+  ctx.lineTo(x, y);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(x, y, Math.max(2, bullet.radius * camera.zoom), 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
 }
 
 function drawCorpses(time) {
@@ -6033,6 +6184,11 @@ window.addEventListener("keydown", (event) => {
   }
 
   if (event.target === chatInput) {
+    return;
+  }
+
+  if (event.key === "`" || event.key.toLowerCase() === "h") {
+    hitboxDebug = !hitboxDebug;
     return;
   }
 

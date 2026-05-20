@@ -19,6 +19,13 @@ const crateTiers = {
   royal: { count: 5, size: 84, hitboxSize: 134, health: 1500, xp: 2500, coinKind: "gold", coinValue: 300 },
 };
 const crateTierOrder = ["basic", "bronze", "metal", "gold", "royal"];
+const crateSpriteRatios = {
+  basic: 1,
+  bronze: 1,
+  metal: 1,
+  gold: 1,
+  royal: 1,
+};
 const crateRespawnMs = 5000;
 const railburstRange = 1500;
 const railburstMaxDamage = 260;
@@ -31,12 +38,16 @@ const areaSkillMaxDamage = 180;
 const xpDropValue = 38;
 const metalCrateXpValue = 125;
 const goldCrateXpValue = 350;
+const novaXpValue = 1000;
+const astralXpValue = 2500;
 const pickupLifetimeMs = 5 * 60 * 1000;
 const defaultPlayerHealth = 200;
 const coinValues = {
   bronze: 5,
   silver: 10,
   gold: 100,
+  bill: 1000,
+  bigBill: 10000,
 };
 const crates = [];
 const pickups = [];
@@ -59,10 +70,13 @@ function clamp(value, min, max) {
 }
 
 function circleHitsBox(circle, box) {
-  const half = getCrateHitboxSize(box) / 2;
-  const closestX = clamp(circle.x, box.x - half, box.x + half);
-  const closestY = clamp(circle.y, box.y - half, box.y + half);
-  return Math.hypot(circle.x - closestX, circle.y - closestY) <= circle.radius;
+  const local = worldToCrateLocal(circle.x, circle.y, box);
+  const dimensions = getCrateHitboxDimensions(box);
+  const halfWidth = dimensions.width / 2;
+  const halfHeight = dimensions.height / 2;
+  const closestX = clamp(local.x, -halfWidth, halfWidth);
+  const closestY = clamp(local.y, -halfHeight, halfHeight);
+  return Math.hypot(local.x - closestX, local.y - closestY) <= circle.radius;
 }
 
 function segmentHitsCircle(x1, y1, x2, y2, cx, cy, radius) {
@@ -81,13 +95,17 @@ function segmentHitsCircle(x1, y1, x2, y2, cx, cy, radius) {
 }
 
 function segmentHitsBox(x1, y1, x2, y2, box, radius = 0) {
-  const half = getCrateHitboxSize(box) / 2 + radius;
-  const minX = box.x - half;
-  const maxX = box.x + half;
-  const minY = box.y - half;
-  const maxY = box.y + half;
-  const dx = x2 - x1;
-  const dy = y2 - y1;
+  const start = worldToCrateLocal(x1, y1, box);
+  const end = worldToCrateLocal(x2, y2, box);
+  const dimensions = getCrateHitboxDimensions(box);
+  const halfWidth = dimensions.width / 2 + radius;
+  const halfHeight = dimensions.height / 2 + radius;
+  const minX = -halfWidth;
+  const maxX = halfWidth;
+  const minY = -halfHeight;
+  const maxY = halfHeight;
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
   let tMin = 0;
   let tMax = 1;
 
@@ -105,20 +123,59 @@ function segmentHitsBox(x1, y1, x2, y2, box, radius = 0) {
     return tMin <= tMax;
   };
 
-  return clip(x1, dx, minX, maxX) && clip(y1, dy, minY, maxY);
+  return clip(start.x, dx, minX, maxX) && clip(start.y, dy, minY, maxY);
 }
 
 function getBoxHitPoint(circle, box) {
-  const half = getCrateHitboxSize(box) / 2;
+  const local = worldToCrateLocal(circle.x, circle.y, box);
+  const dimensions = getCrateHitboxDimensions(box);
+  const halfWidth = dimensions.width / 2;
+  const halfHeight = dimensions.height / 2;
 
-  return {
-    x: clamp(circle.x, box.x - half, box.x + half),
-    y: clamp(circle.y, box.y - half, box.y + half),
-  };
+  return crateLocalToWorld(clamp(local.x, -halfWidth, halfWidth), clamp(local.y, -halfHeight, halfHeight), box);
 }
 
 function getCrateHitboxSize(crate) {
-  return crate.hitboxSize || crateTiers[crate.kind || "basic"]?.hitboxSize || crate.size;
+  const dimensions = getCrateHitboxDimensions(crate);
+  return Math.max(dimensions.width, dimensions.height);
+}
+
+function getCrateSpriteScale(kind) {
+  if (kind === "basic") return 1.65;
+  if (kind === "metal") return 1.72;
+  return 1.8;
+}
+
+function getCrateHitboxDimensions(crate) {
+  const kind = crate.kind || "basic";
+  const width = crate.size * getCrateSpriteScale(kind);
+  const height = width * (crateSpriteRatios[kind] || 1);
+
+  return { width, height };
+}
+
+function worldToCrateLocal(x, y, crate) {
+  const angle = -(crate.rotation || 0);
+  const dx = x - crate.x;
+  const dy = y - crate.y;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+
+  return {
+    x: dx * cos - dy * sin,
+    y: dx * sin + dy * cos,
+  };
+}
+
+function crateLocalToWorld(x, y, crate) {
+  const angle = crate.rotation || 0;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+
+  return {
+    x: crate.x + x * cos - y * sin,
+    y: crate.y + x * sin + y * cos,
+  };
 }
 
 function getCrateCount(kind) {
@@ -188,13 +245,6 @@ function getXpDropValues(totalValue) {
   let remaining = Math.max(0, Math.round(totalValue));
   const values = [];
 
-  for (const value of [goldCrateXpValue, metalCrateXpValue, xpDropValue]) {
-    while (remaining >= value) {
-      values.push(value);
-      remaining -= value;
-    }
-  }
-
   if (remaining > 0) {
     values.push(remaining);
   }
@@ -221,7 +271,7 @@ function getCoinDropEntries(totalValue) {
   let remaining = Math.max(0, Math.round(totalValue));
   const entries = [];
 
-  for (const [coinKind, value] of [["gold", coinValues.gold], ["silver", coinValues.silver], ["bronze", coinValues.bronze]]) {
+  for (const [coinKind, value] of [["bigBill", coinValues.bigBill], ["bill", coinValues.bill], ["gold", coinValues.gold], ["silver", coinValues.silver], ["bronze", coinValues.bronze]]) {
     while (remaining >= value) {
       entries.push({ coinKind, value });
       remaining -= value;
