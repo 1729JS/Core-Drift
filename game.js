@@ -2803,6 +2803,8 @@ function setRemotePlayerState(id, state) {
   const previous = remotePlayers.get(id);
 
   remotePlayers.set(id, {
+    id,
+    isAi: String(id).startsWith("test-ai-"),
     ...state,
     renderX: previous?.renderX ?? state.x,
     renderY: previous?.renderY ?? state.y,
@@ -2815,6 +2817,11 @@ function sendNetwork(type, payload) {
   if (socket && socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify({ type, ...payload }));
   }
+}
+
+function toggleDebugTools() {
+  hitboxDebug = !hitboxDebug;
+  sendNetwork("toggleAi", { enabled: hitboxDebug });
 }
 
 function syncWorldPickups(nextPickups) {
@@ -5098,6 +5105,29 @@ function drawBulletDebugOverlay(previousX, previousY, x, y, bullet) {
   ctx.restore();
 }
 
+function drawPlayerDebugOverlay(worldX, worldY, radius, label, color = "rgba(255, 156, 181, 0.94)") {
+  const x = worldToScreenX(worldX);
+  const y = worldToScreenY(worldY);
+  const screenRadius = radius * camera.zoom;
+
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color.replace("0.94", "0.14").replace("0.9", "0.14");
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 5]);
+  ctx.beginPath();
+  ctx.arc(x, y, screenRadius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = color;
+  ctx.font = "800 11px Inter, system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+  ctx.fillText(label, x, y - screenRadius - 5);
+  ctx.restore();
+}
+
 function drawCorpses(time) {
   const now = performance.now();
 
@@ -5241,6 +5271,16 @@ function drawRemotePlayers(time) {
     ctx.fillStyle = hpRatio > 0.4 ? "#8df4df" : "#ff9cb5";
     ctx.fillRect(-22, player.radius + 15, 44 * hpRatio, 5);
     ctx.restore();
+
+    if (hitboxDebug) {
+      drawPlayerDebugOverlay(
+        remote.renderX,
+        remote.renderY,
+        player.radius,
+        remote.isAi ? "AI hitbox" : "Player hitbox",
+        remote.isAi ? "rgba(141, 244, 223, 0.94)" : "rgba(255, 156, 181, 0.94)",
+      );
+    }
   }
 }
 
@@ -6188,7 +6228,7 @@ window.addEventListener("keydown", (event) => {
   }
 
   if (event.key === "`" || event.key.toLowerCase() === "h") {
-    hitboxDebug = !hitboxDebug;
+    toggleDebugTools();
     return;
   }
 
@@ -6537,7 +6577,9 @@ for (const button of upgradeButtons) {
 
 accountSignOut?.addEventListener("click", () => {
   saveCharacterProfile();
+  window.google?.accounts?.id?.disableAutoSelect?.();
   setActiveAccount({ id: "guest", name: "Guest" });
+  accountStatus.textContent = "Logged out. Guest profile";
 });
 window.addEventListener("beforeunload", saveCharacterProfile);
 

@@ -61,6 +61,7 @@ const handledDropIds = new Set();
 let nextEntityId = 1;
 let lastTick = Date.now();
 let aiBroadcastTimer = 0;
+let testAiEnabled = true;
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -228,7 +229,7 @@ function spawnCrate(kind = "basic", distributedIndex = null, distributedTotal = 
 
 function createAiState(index) {
   const angle = (Math.PI * 2 * index) / testAiCount;
-  const distance = 520 + (index % 4) * 140;
+  const distance = 1450 + (index % 5) * 260;
   const x = clamp(world.width / 2 + Math.cos(angle) * distance, 80, world.width - 80);
   const y = clamp(world.height / 2 + Math.sin(angle) * distance, 80, world.height - 80);
 
@@ -283,6 +284,33 @@ function ensureTestAiBots() {
   }
 }
 
+function removeTestAiBots() {
+  for (const [id, client] of clients) {
+    if (!client.isBot) {
+      continue;
+    }
+
+    clients.delete(id);
+    broadcast({ type: "leave", id });
+  }
+}
+
+function setTestAiEnabled(enabled) {
+  testAiEnabled = Boolean(enabled);
+
+  if (!testAiEnabled) {
+    removeTestAiBots();
+    return;
+  }
+
+  ensureTestAiBots();
+  for (const [id, client] of clients) {
+    if (client.isBot && client.state && client.state.health > 0) {
+      broadcast({ type: "state", id, state: client.state }, id);
+    }
+  }
+}
+
 function getNearestHumanClient(state) {
   let nearest = null;
   let nearestDistance = Infinity;
@@ -304,6 +332,10 @@ function getNearestHumanClient(state) {
 }
 
 function updateTestAiBots(delta) {
+  if (!testAiEnabled) {
+    return;
+  }
+
   let changed = false;
   const now = Date.now();
   aiBroadcastTimer -= delta;
@@ -1643,6 +1675,8 @@ server.on("upgrade", (request, socket) => {
           broadcastWorld();
         }
         broadcast({ type: "dead", id }, id);
+      } else if (message.type === "toggleAi") {
+        setTestAiEnabled(Boolean(message.enabled));
       }
     }
   });
