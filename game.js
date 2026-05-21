@@ -335,7 +335,9 @@ const camera = {
   smoothing: 0.12,
   zoom: 1 / 1.32,
 };
+const baseCameraZoom = 1 / 1.32;
 const fixedViewWorldHeight = 950;
+const networkStateInterval = 1 / 15;
 
 const keys = new Set();
 const bullets = [];
@@ -618,7 +620,7 @@ function resize() {
   const scale = window.devicePixelRatio || 1;
   width = window.innerWidth;
   height = window.innerHeight;
-  camera.zoom = height / fixedViewWorldHeight;
+  camera.zoom = Math.max(baseCameraZoom, height / fixedViewWorldHeight);
 
   canvas.width = Math.floor(width * scale);
   canvas.height = Math.floor(height * scale);
@@ -3954,7 +3956,7 @@ function update(delta) {
 
   if (lastNetworkSend <= 0) {
     sendNetwork("state", { state: getPlayerSnapshot() });
-    lastNetworkSend = 0.033;
+    lastNetworkSend = networkStateInterval;
   }
 
   if (saveTimer <= 0) {

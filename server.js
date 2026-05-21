@@ -11,6 +11,9 @@ const supabaseUrl = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const clients = new Map();
 const world = { width: 12000, height: 12000 };
+const testAiCount = 10;
+const testAiRespawnMs = 2500;
+const testAiNames = ["Bolt", "Echo", "Nova", "Rift", "Vex", "Juno", "Kite", "Flux", "Aero", "Nyx"];
 const crateTiers = {
   basic: { count: 100, size: 54, hitboxSize: 72, health: 150, xp: 38, coinKind: "bronze", coinValue: 5 },
   bronze: { count: 60, size: 58, hitboxSize: 100, health: 300, xp: 125, coinKind: "silver", coinValue: 10 },
@@ -56,6 +59,7 @@ const staticCollapseProjectiles = [];
 const handledDropIds = new Set();
 let nextEntityId = 1;
 let lastTick = Date.now();
+let aiBroadcastTimer = 0;
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -218,6 +222,137 @@ function spawnCrate(kind = "basic", distributedIndex = null, distributedTotal = 
       maxHp: tier.health,
     });
     return;
+  }
+}
+
+function createAiState(index) {
+  const angle = (Math.PI * 2 * index) / testAiCount;
+  const distance = 520 + (index % 4) * 140;
+  const x = clamp(world.width / 2 + Math.cos(angle) * distance, 80, world.width - 80);
+  const y = clamp(world.height / 2 + Math.sin(angle) * distance, 80, world.height - 80);
+
+  return {
+    x,
+    y,
+    name: `AI ${testAiNames[index % testAiNames.length]}`,
+    health: defaultPlayerHealth,
+    maxHealth: defaultPlayerHealth,
+    shield: 0,
+    maxShield: 125,
+    healAmount: 60,
+    level: 1,
+    xp: 0,
+    xpToNext: 100,
+    coins: 0,
+    totalXp: 100 + index * 25,
+    upgradePoints: 0,
+    damageMultiplier: 1,
+    upgrades: {},
+    inventory: { slots: { 1: null, 2: null, 3: null }, knife: { count: 0 }, glock: { ammo: 0, magAmmo: 0 }, awm: { ammo: 0, magAmmo: 0 } },
+    selectedWeapon: null,
+    aimAngle: angle + Math.PI,
+    swingTimer: 0,
+    swingDuration: 0.18,
+    punchTimer: 0,
+    punchDuration: 0.16,
+    knifeCharging: false,
+    knifeCharge: 0,
+  };
+}
+
+function ensureTestAiBots() {
+  for (let index = 0; index < testAiCount; index += 1) {
+    const id = `test-ai-${index + 1}`;
+
+    if (clients.has(id)) {
+      continue;
+    }
+
+    clients.set(id, {
+      socket: null,
+      isBot: true,
+      state: createAiState(index),
+      ai: {
+        index,
+        angle: Math.random() * Math.PI * 2,
+        turnTimer: 0.4 + Math.random() * 1.3,
+        respawnAt: 0,
+      },
+    });
+  }
+}
+
+function getNearestHumanClient(state) {
+  let nearest = null;
+  let nearestDistance = Infinity;
+
+  for (const [id, client] of clients) {
+    if (client.isBot || !client.state || client.state.health <= 0) {
+      continue;
+    }
+
+    const distance = Math.hypot(client.state.x - state.x, client.state.y - state.y);
+
+    if (distance < nearestDistance) {
+      nearest = { id, client, distance };
+      nearestDistance = distance;
+    }
+  }
+
+  return nearest;
+}
+
+function updateTestAiBots(delta) {
+  let changed = false;
+  const now = Date.now();
+  aiBroadcastTimer -= delta;
+
+  for (const [id, client] of clients) {
+    if (!client.isBot || !client.state || !client.ai) {
+      continue;
+    }
+
+    if (client.state.health <= 0) {
+      if (!client.ai.respawnAt) {
+        client.ai.respawnAt = now + testAiRespawnMs;
+      }
+
+      if (now < client.ai.respawnAt) {
+        continue;
+      }
+
+      client.state = createAiState(client.ai.index);
+      client.ai.respawnAt = 0;
+      changed = true;
+      broadcast({ type: "state", id, state: client.state }, id);
+      continue;
+    }
+
+    client.ai.turnTimer -= delta;
+    const nearest = getNearestHumanClient(client.state);
+
+    if (nearest && nearest.distance < 1100) {
+      client.ai.angle = Math.atan2(nearest.client.state.y - client.state.y, nearest.client.state.x - client.state.x);
+      client.state.aimAngle = client.ai.angle;
+    } else if (client.ai.turnTimer <= 0) {
+      client.ai.angle += (Math.random() - 0.5) * 1.8;
+      client.ai.turnTimer = 0.5 + Math.random() * 1.4;
+      client.state.aimAngle = client.ai.angle;
+    }
+
+    const speed = nearest && nearest.distance < 1100 ? 145 : 95;
+    client.state.x = clamp(client.state.x + Math.cos(client.ai.angle) * speed * delta, 36, world.width - 36);
+    client.state.y = clamp(client.state.y + Math.sin(client.ai.angle) * speed * delta, 36, world.height - 36);
+    changed = true;
+  }
+
+  if (changed && aiBroadcastTimer <= 0) {
+    for (const [id, client] of clients) {
+      if (client.isBot && client.state && client.state.health > 0) {
+        broadcast({ type: "state", id, state: client.state }, id);
+      }
+    }
+    aiBroadcastTimer = 0.1;
   }
 }
 
@@ -946,6 +1081,7 @@ function updateBullets(delta) {
 }
 
 createCrates();
+ensureTestAiBots();
 
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
@@ -1037,7 +1173,7 @@ function decodeFrames(buffer) {
 }
 
 function send(socket, data) {
-  if (!socket.destroyed) {
+  if (socket && !socket.destroyed) {
     socket.write(encodeFrame(data));
   }
 }
@@ -1546,4 +1682,5 @@ setInterval(() => {
   lastTick = now;
   updateBullets(delta);
   updateStaticCollapseProjectiles(delta);
+  updateTestAiBots(delta);
 }, 1000 / 60);
