@@ -337,7 +337,8 @@ const camera = {
 };
 const baseCameraZoom = 1 / 1.32;
 const fixedViewWorldHeight = 950;
-const networkStateInterval = 1 / 15;
+const networkStateInterval = 1 / 20;
+const crateHitboxScale = 0.78;
 
 const keys = new Set();
 const bullets = [];
@@ -716,7 +717,7 @@ function getCrateSpriteScale(kind) {
 
 function getCrateHitboxDimensions(crate) {
   const kind = crate.kind || "basic";
-  const width = crate.size * getCrateSpriteScale(kind);
+  const width = crate.size * getCrateSpriteScale(kind) * crateHitboxScale;
   const height = width * (crateSpriteRatios[kind] || 1);
 
   return { width, height };

@@ -29,6 +29,7 @@ const crateSpriteRatios = {
   gold: 1,
   royal: 1,
 };
+const crateHitboxScale = 0.78;
 const crateRespawnMs = 5000;
 const railburstRange = 1500;
 const railburstMaxDamage = 260;
@@ -152,7 +153,7 @@ function getCrateSpriteScale(kind) {
 
 function getCrateHitboxDimensions(crate) {
   const kind = crate.kind || "basic";
-  const width = crate.size * getCrateSpriteScale(kind);
+  const width = crate.size * getCrateSpriteScale(kind) * crateHitboxScale;
   const height = width * (crateSpriteRatios[kind] || 1);
 
   return { width, height };
@@ -352,7 +353,7 @@ function updateTestAiBots(delta) {
         broadcast({ type: "state", id, state: client.state }, id);
       }
     }
-    aiBroadcastTimer = 0.1;
+    aiBroadcastTimer = 0.05;
   }
 }
 
