@@ -335,6 +335,7 @@ const camera = {
   smoothing: 0.12,
   zoom: 1 / 1.32,
 };
+const fixedViewWorldHeight = 950;
 
 const keys = new Set();
 const bullets = [];
@@ -617,6 +618,7 @@ function resize() {
   const scale = window.devicePixelRatio || 1;
   width = window.innerWidth;
   height = window.innerHeight;
+  camera.zoom = height / fixedViewWorldHeight;
 
   canvas.width = Math.floor(width * scale);
   canvas.height = Math.floor(height * scale);
