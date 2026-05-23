@@ -357,6 +357,14 @@ let height = 0;
 let lastTime = performance.now();
 let crateRegenTimer = crateRespawnSeconds;
 let audioContext = null;
+const audioAssets = {
+  glockShot: new Audio("assets/sounds/glock-shot.mp3"),
+  glockReload: new Audio("assets/sounds/glock-reload.mp3"),
+  awmShot: new Audio("assets/sounds/awm-shot.mp3"),
+  awmReload: new Audio("assets/sounds/awm-reload.mp3"),
+  knifeSwing: new Audio("assets/sounds/knife-swing.mp3"),
+  knifeThrow: new Audio("assets/sounds/knife-throw.mp3"),
+};
 let draggedSlot = null;
 let draggedSkillSlot = null;
 let weaponPointerDrag = null;
@@ -2418,6 +2426,16 @@ function getAudioContext() {
   return audioContext;
 }
 
+function playAudioAsset(asset, volume = 0.75) {
+  if (!asset) {
+    return;
+  }
+
+  const sound = asset.cloneNode();
+  sound.volume = volume;
+  sound.play().catch(() => {});
+}
+
 function playTone({ frequency, duration, type = "sine", gain = 0.08, when = 0 }) {
   const audio = getAudioContext();
   const oscillator = audio.createOscillator();
@@ -2466,48 +2484,29 @@ function playNoise({ duration, gain = 0.08, when = 0, filterFrequency = 900 }) {
 }
 
 function playSwordSwing() {
-  const audio = getAudioContext();
-  const duration = 0.22;
-  const start = audio.currentTime;
-  const bufferSize = Math.floor(audio.sampleRate * duration);
-  const buffer = audio.createBuffer(1, bufferSize, audio.sampleRate);
-  const data = buffer.getChannelData(0);
+  playAudioAsset(audioAssets.knifeSwing, 0.12);
+}
 
-  for (let index = 0; index < bufferSize; index += 1) {
-    const t = index / bufferSize;
-    const envelope = Math.pow(1 - t, 2);
-    data[index] = (Math.random() * 2 - 1) * envelope;
-  }
-
-  const source = audio.createBufferSource();
-  const filter = audio.createBiquadFilter();
-  const volume = audio.createGain();
-
-  source.buffer = buffer;
-  filter.type = "bandpass";
-  filter.frequency.setValueAtTime(900, start);
-  filter.frequency.exponentialRampToValueAtTime(4200, start + duration);
-  filter.Q.setValueAtTime(1.2, start);
-
-  volume.gain.setValueAtTime(0.0001, start);
-  volume.gain.exponentialRampToValueAtTime(0.32, start + 0.03);
-  volume.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-
-  source.connect(filter);
-  filter.connect(volume);
-  volume.connect(audio.destination);
-  source.start(start);
-  source.stop(start + duration);
+function playKnifeThrowSound() {
+  playAudioAsset(audioAssets.knifeThrow, 0.12);
 }
 
 function playGunSound(weaponName) {
   if (weaponName === "awm") {
-    playNoise({ duration: 0.18, gain: 0.16, filterFrequency: 420 });
-    playTone({ frequency: 85, duration: 0.2, type: "sawtooth", gain: 0.12 });
-    playTone({ frequency: 48, duration: 0.22, type: "sine", gain: 0.1, when: 0.03 });
+    playAudioAsset(audioAssets.awmShot, 0.03);
+  } else if (weaponName === "glock") {
+    playAudioAsset(audioAssets.glockShot, 0.06);
   } else {
     playNoise({ duration: 0.08, gain: 0.11, filterFrequency: 1050 });
     playTone({ frequency: 155, duration: 0.08, type: "square", gain: 0.055 });
+  }
+}
+
+function playReloadSound(weaponName) {
+  if (weaponName === "glock") {
+    playAudioAsset(audioAssets.glockReload, 0.06);
+  } else if (weaponName === "awm") {
+    playAudioAsset(audioAssets.awmReload, 0.03);
   }
 }
 
@@ -3332,6 +3331,7 @@ function startReload(weaponName = weapons.slots[weapons.selectedSlot]) {
   }
 
   weapon.reloadTimer = weapon.reloadTime;
+  playReloadSound(weaponName);
   return true;
 }
 
@@ -3520,6 +3520,7 @@ function throwKnife() {
   player.knifeCharge = 0;
   player.knifeCharging = false;
   updateInventory();
+  playKnifeThrowSound();
   return true;
 }
 
