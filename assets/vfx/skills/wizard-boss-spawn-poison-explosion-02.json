@@ -1,0 +1,8 @@
+{
+  "source": "C:\\Users\\JUN\\My project\\Assets\\Vefects\\Flipbook VFX\\Shared\\Textures\\Explosion\\FB_4x4_RGBC_dusstExplosion_01.tga",
+  "prefab": "VFX_ExplosionPoison_02",
+  "material": "M_VFX_ExplosionPoison_02",
+  "columns": 4,
+  "rows": 4,
+  "frameCount": 16
+}

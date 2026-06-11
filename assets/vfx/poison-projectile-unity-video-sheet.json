@@ -1,0 +1,15 @@
+{
+  "source": "C:\\Users\\JUN\\Documents\\Codex\\2026-05-10\\diep-io-wasd\\assets\\vfx\\video-frames\\poison-projectile",
+  "frames": 24,
+  "columns": 6,
+  "rows": 4,
+  "frameRate": 30,
+  "tileWidth": 224,
+  "tileHeight": 112,
+  "crop": {
+    "x": 166,
+    "y": 104,
+    "width": 224,
+    "height": 112
+  }
+}

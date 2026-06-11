@@ -1,0 +1,108 @@
+window.CORE_DRIFT_CONFIG = {
+  defaultCharacterId: "blueSoldier",
+  storageKeys: {
+    selectedCharacter: "core-drift-character",
+    unlockedCharacters: "core-drift-unlocked-characters",
+    account: "core-drift-account",
+  },
+  world: {
+    width: 12000,
+    height: 12000,
+  },
+  characters: {
+    modern: {
+      id: "modern",
+      label: "Modern Soldier",
+      selectable: false,
+      basePath: "assets/characters/modern-character-20260603-125114",
+    },
+    blueSoldier: {
+      id: "blueSoldier",
+      label: "Blue Soldier",
+      basePath: "assets/characters/blue-soldier",
+    },
+    wizardBoss: {
+      id: "wizardBoss",
+      label: "Wizard",
+      unlockHint: "Defeat boss to unlock",
+      basePath: "assets/characters/wizard-boss",
+    },
+  },
+  weaponCharacterPaths: {
+    knife: "assets/characters/knife-character",
+    glock: "assets/characters/pistol-character",
+    awm: "assets/characters/sniper-character",
+    magicStaff: "assets/characters/magic-staff-character",
+  },
+  crateTiers: {
+    basic: { count: 100, size: 54, hitboxSize: 72, health: 150, xp: 38, coinKind: "bronze", coinValue: 5 },
+    bronze: { count: 60, size: 58, hitboxSize: 100, health: 300, xp: 125, coinKind: "silver", coinValue: 10 },
+    metal: { count: 40, size: 62, hitboxSize: 96, health: 600, xp: 350, coinKind: "gold", coinValue: 100 },
+    gold: { count: 20, size: 74, hitboxSize: 118, health: 900, xp: 1000, coinKind: "gold", coinValue: 150 },
+    royal: { count: 5, size: 84, hitboxSize: 134, health: 1500, xp: 2500, coinKind: "gold", coinValue: 300 },
+  },
+  crateTierOrder: ["basic", "bronze", "metal", "gold", "royal"],
+  crateSpriteRatios: {
+    basic: 1,
+    bronze: 1,
+    metal: 1,
+    gold: 1,
+    royal: 1,
+  },
+  baseStats: {
+    maxSpeed: 480,
+    acceleration: 1620,
+    dashSpeed: 980,
+    maxHealth: 200,
+    healAmount: 60,
+    damageMultiplier: 1,
+  },
+  shopPrices: {
+    knife: { buy: 50, sell: 25 },
+    glock: { buy: 170, sell: 85 },
+    awm: { buy: 360, sell: 180 },
+    bazooka: { buy: 240, sell: 120 },
+    grenade: { buy: 95, sell: 45 },
+  },
+  shopUpgradePrices: {
+    knife: { range: 120, damage: 140, speed: 160 },
+    glock: { range: 180, damage: 240, mag: 220, speed: 260 },
+    awm: { range: 280, damage: 360, mag: 320, speed: 420 },
+    bazooka: { range: 360, damage: 480, speed: 400 },
+  },
+  shopAbilityPrices: {
+    heal: 180,
+    magnet: 260,
+  },
+  skillShopPrices: {
+    knifeRecall: 250,
+    staticCollapse: 520,
+    arcPrison: 620,
+    stormRecall: 560,
+    lightningThrust: 650,
+    railburst: 900,
+  },
+  titleShopPrices: {
+    dizzyCamera: 100000,
+  },
+  coinValues: {
+    bronze: 5,
+    silver: 10,
+    gold: 100,
+    bill: 1000,
+    bigBill: 10000,
+  },
+  upgradeSteps: {
+    speed: { maxSpeed: 35, acceleration: 90 },
+    dash: { dashSpeed: 90 },
+    health: { maxHealth: 25 },
+    damage: { damageMultiplier: 0.1 },
+    reload: { reloadReduction: 0.06 },
+  },
+  baseReloadTimes: {
+    glock: 3,
+    awm: 5,
+    bazooka: 4,
+    grenade: 1.1,
+  },
+};

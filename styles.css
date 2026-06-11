@@ -106,6 +106,62 @@ body {
   font-weight: 900;
 }
 
+.character-select {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  gap: 10px;
+  width: min(340px, 100%);
+  margin: 0 auto 14px;
+}
+
+.character-card {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  min-height: 116px;
+  padding: 8px;
+  border: 1px solid rgba(246, 242, 233, 0.16);
+  border-radius: 8px;
+  background: rgba(246, 242, 233, 0.055);
+  color: rgba(246, 242, 233, 0.8);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.character-card:hover,
+.character-card.selected {
+  border-color: rgba(141, 244, 223, 0.72);
+  color: #f6f2e9;
+  background: rgba(141, 244, 223, 0.12);
+}
+
+.character-card.locked {
+  opacity: 0.46;
+  cursor: not-allowed;
+  filter: grayscale(0.8);
+}
+
+.character-card.locked:hover {
+  border-color: rgba(246, 242, 233, 0.16);
+  color: rgba(246, 242, 233, 0.8);
+  background: rgba(246, 242, 233, 0.055);
+}
+
+.character-card small {
+  min-height: 13px;
+  color: rgba(255, 207, 95, 0.84);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.character-card canvas {
+  width: 74px;
+  height: 74px;
+  image-rendering: pixelated;
+}
+
 .nickname-field {
   display: block;
   width: min(260px, 100%);
@@ -559,6 +615,25 @@ body {
   align-items: center;
 }
 
+.shop-title-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.shop-title-row.owned {
+  border-color: rgba(141, 244, 223, 0.32);
+}
+
+.shop-title-row.equipped {
+  border-color: rgba(255, 207, 95, 0.5);
+  background: rgba(255, 207, 95, 0.08);
+}
+
 .shop-skill-row.owned {
   border-color: rgba(141, 244, 223, 0.32);
 }
@@ -628,6 +703,37 @@ body {
     0 8px 18px rgba(0, 0, 0, 0.22);
 }
 
+.title-icon {
+  position: relative;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(255, 207, 95, 0.3);
+  border-radius: 8px;
+  background: rgba(6, 10, 13, 0.58);
+}
+
+.title-icon-dizzy::before,
+.title-icon-dizzy::after {
+  position: absolute;
+  content: "";
+  border: 3px solid #ffcf5f;
+  border-left-color: transparent;
+  border-radius: 50%;
+}
+
+.title-icon-dizzy::before {
+  inset: 8px;
+}
+
+.title-icon-dizzy::after {
+  inset: 13px;
+  border-width: 2px;
+  border-right-color: transparent;
+  border-left-color: #8df4df;
+  border-top-color: #8df4df;
+}
+
 .passive-icon-heal::before,
 .passive-icon-heal::after {
   position: absolute;
@@ -681,7 +787,9 @@ body {
 }
 
 .shop-row .glock-icon,
-.shop-row .awm-icon {
+.shop-row .awm-icon,
+.shop-row .bazooka-icon,
+.shop-row .grenade-icon {
   transform: scale(0.78);
 }
 
@@ -750,6 +858,10 @@ body {
 
 .shop-upgrade-preview .awm-icon {
   transform: scale(0.98);
+}
+
+.shop-upgrade-preview .bazooka-icon {
+  transform: scale(0.88);
 }
 
 .shop-upgrade-preview strong {
@@ -956,6 +1068,22 @@ body {
 
 .active-skill-slot[data-skill-slot="e"] {
   left: calc(50% + 332px);
+}
+
+.test-only-skill-slot {
+  display: none;
+}
+
+body.test-mode .test-only-skill-slot {
+  display: block;
+}
+
+.active-skill-slot[data-skill-slot="z"] {
+  left: calc(50% + 394px);
+}
+
+.active-skill-slot[data-skill-slot="x"] {
+  left: calc(50% + 456px);
 }
 
 .skill-key {
@@ -1318,6 +1446,51 @@ body {
   pointer-events: none;
 }
 
+.info-tooltip {
+  position: fixed;
+  z-index: 40;
+  width: 260px;
+  max-width: calc(100vw - 24px);
+  padding: 12px;
+  border: 1px solid rgba(141, 244, 223, 0.36);
+  border-radius: 9px;
+  background: rgba(10, 13, 15, 0.94);
+  color: rgba(246, 242, 233, 0.84);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.42);
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none;
+  backdrop-filter: blur(12px);
+}
+
+.info-tooltip strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #f6f2e9;
+  font-size: 14px;
+}
+
+.info-tooltip p {
+  margin: 0 0 8px;
+}
+
+.info-tooltip dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 9px;
+  margin: 0;
+}
+
+.info-tooltip dt {
+  color: #8df4df;
+  font-weight: 900;
+}
+
+.info-tooltip dd {
+  margin: 0;
+  text-align: right;
+}
+
 .hidden {
   display: none !important;
 }
@@ -1335,6 +1508,39 @@ body {
   line-height: 18px;
 }
 
+.right-click-hint {
+  position: absolute;
+  top: 5px;
+  right: 7px;
+  width: 14px;
+  height: 19px;
+  border: 1.5px solid rgba(246, 242, 233, 0.7);
+  border-radius: 8px 8px 7px 7px;
+  background: rgba(11, 15, 18, 0.72);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.24);
+}
+
+.right-click-hint::before {
+  position: absolute;
+  top: 2px;
+  bottom: 8px;
+  left: 50%;
+  width: 1px;
+  content: "";
+  background: rgba(246, 242, 233, 0.44);
+}
+
+.mouse-right-button {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 5px;
+  height: 7px;
+  border-radius: 0 5px 2px 0;
+  background: #ffcf5f;
+  box-shadow: 0 0 4px rgba(255, 207, 95, 0.45);
+}
+
 .weapon-icon {
   position: relative;
   display: block;
@@ -1345,87 +1551,12 @@ body {
 
 .knife-icon {
   transform: rotate(-24deg);
-}
-
-.knife-blade {
-  position: absolute;
-  right: 4px;
-  top: 10px;
-  width: 42px;
-  height: 14px;
-  border-radius: 100% 12px 12px 100%;
-  background: linear-gradient(160deg, #f4f6f2 0%, #9eaab2 56%, #e8ecec 100%);
-  box-shadow: inset 0 -3px 0 rgba(68, 78, 82, 0.28);
-}
-
-.knife-blade::after {
-  content: "";
-  position: absolute;
-  right: 4px;
-  bottom: 2px;
-  width: 28px;
-  height: 2px;
-  border-radius: 999px;
-  background: rgba(65, 80, 86, 0.42);
-}
-
-.knife-handle {
-  position: absolute;
-  left: 4px;
-  top: 11px;
-  width: 24px;
-  height: 12px;
-  border-radius: 6px;
-  background: repeating-linear-gradient(90deg, #20272b 0 5px, #3d484d 5px 9px);
-  box-shadow: 20px -3px 0 -7px #15191c;
+  object-fit: contain;
 }
 
 .glock-icon {
   margin-top: 12px;
-}
-
-.glock-slide {
-  position: absolute;
-  left: 5px;
-  top: 8px;
-  width: 52px;
-  height: 13px;
-  border-radius: 4px 6px 3px 3px;
-  background: linear-gradient(#202428, #07090b);
-  box-shadow: inset 10px 0 0 rgba(255, 255, 255, 0.06);
-}
-
-.glock-slide::before {
-  content: "";
-  position: absolute;
-  left: -4px;
-  top: 2px;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: #11161a;
-}
-
-.glock-grip {
-  position: absolute;
-  left: 34px;
-  top: 18px;
-  width: 17px;
-  height: 24px;
-  border-radius: 3px 3px 6px 6px;
-  background: linear-gradient(100deg, #1d2226, #050607);
-  transform: skewX(12deg);
-}
-
-.glock-trigger {
-  position: absolute;
-  left: 23px;
-  top: 21px;
-  width: 14px;
-  height: 14px;
-  border: 3px solid #101417;
-  border-top: 0;
-  border-radius: 0 0 8px 8px;
+  object-fit: contain;
 }
 
 .awm-icon {
@@ -1498,6 +1629,79 @@ body {
   height: 15px;
   border-radius: 9px 3px 3px 9px;
   background: #656d45;
+}
+
+.bazooka-icon {
+  width: 78px;
+  height: 42px;
+  margin-top: 12px;
+  object-fit: contain;
+}
+
+.grenade-icon {
+  width: 54px;
+  margin-top: 10px;
+}
+
+.magic-staff-icon {
+  width: 54px;
+  height: 54px;
+  margin-top: 4px;
+}
+
+.magic-staff-icon img {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 30px;
+  height: 35px;
+  image-rendering: pixelated;
+  transform: translate(-50%, -50%) rotate(-18deg) scale(1.5);
+}
+
+.grenade-body {
+  position: absolute;
+  left: 15px;
+  top: 12px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #667c52, #35452f);
+  box-shadow: inset -5px -4px 0 rgba(0, 0, 0, 0.18), 0 0 0 2px #151a18;
+}
+
+.grenade-body::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: -6px;
+  width: 9px;
+  height: 6px;
+  border-radius: 2px 2px 1px 1px;
+  background: #262f28;
+}
+
+.grenade-pin {
+  position: absolute;
+  left: 34px;
+  top: 8px;
+  width: 11px;
+  height: 11px;
+  border: 2px solid #e2c77c;
+  border-radius: 50%;
+}
+
+.grenade-pin::before {
+  content: "";
+  position: absolute;
+  left: -7px;
+  top: 5px;
+  width: 8px;
+  height: 2px;
+  border-radius: 2px;
+  background: #e2c77c;
+  transform: rotate(36deg);
+  transform-origin: right center;
 }
 
 .empty-mark {

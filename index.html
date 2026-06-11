@@ -18,6 +18,7 @@
           <div class="google-signin" id="googleSignIn"></div>
           <button class="account-signout hidden" id="accountSignOut" type="button">Log out</button>
         </div>
+        <div class="character-select" id="characterSelect" aria-label="Character select"></div>
         <label class="nickname-field">
           <span>Nickname</span>
           <input id="nicknameInput" type="text" maxlength="14" placeholder="Player" autocomplete="off" />
@@ -27,9 +28,9 @@
           <span>WASD</span>
           <span>Move</span>
           <span>Left Click</span>
-          <span>Attack</span>
+          <span>Attack / Staff Slash / Charge & Throw Grenade</span>
           <span>Right Click</span>
-          <span>Charge Knife</span>
+          <span>Charge Knife / sniper Aim / Staff Bolt / Pull Grenade Pin</span>
           <span>Space</span>
           <span>Dash</span>
           <span>F</span>
@@ -110,10 +111,7 @@
       <div class="shop-list">
         <div class="shop-row shop-trade-row" data-item="knife">
           <span class="shop-item-main">
-            <span class="weapon-icon knife-icon">
-              <span class="knife-blade"></span>
-              <span class="knife-handle"></span>
-            </span>
+            <canvas class="weapon-icon knife-icon" data-knife-icon width="82" height="48" aria-hidden="true"></canvas>
             <span class="shop-item-copy"><b>Knife</b><small>Trade one knife at a time</small></span>
           </span>
           <button data-action="buy" data-item="knife" type="button">Buy 50</button>
@@ -121,12 +119,8 @@
         </div>
         <div class="shop-row shop-trade-row" data-item="glock">
           <span class="shop-item-main">
-            <span class="weapon-icon glock-icon">
-              <span class="glock-slide"></span>
-              <span class="glock-grip"></span>
-              <span class="glock-trigger"></span>
-            </span>
-            <span class="shop-item-copy"><b>Glock</b><small>Trade in 17-round bundles</small></span>
+            <canvas class="weapon-icon glock-icon" data-glock-icon width="76" height="52" aria-hidden="true"></canvas>
+            <span class="shop-item-copy"><b>pistol</b><small>Trade in 17-round bundles</small></span>
           </span>
           <button data-action="buy" data-item="glock" type="button">Buy 17 ammo</button>
           <button data-action="sell" data-item="glock" type="button">Sell 17 ammo</button>
@@ -139,18 +133,34 @@
               <span class="awm-body"></span>
               <span class="awm-stock"></span>
             </span>
-            <span class="shop-item-copy"><b>AWM</b><small>Trade in 6-round bundles</small></span>
+            <span class="shop-item-copy"><b>sniper</b><small>Trade in 6-round bundles</small></span>
           </span>
           <button data-action="buy" data-item="awm" type="button">Buy 6 ammo</button>
           <button data-action="sell" data-item="awm" type="button">Sell 6 ammo</button>
         </div>
+        <div class="shop-row shop-trade-row" data-item="bazooka">
+          <span class="shop-item-main">
+            <canvas class="weapon-icon bazooka-icon" data-bazooka-icon width="94" height="50" aria-hidden="true"></canvas>
+            <span class="shop-item-copy"><b>Bazooka</b><small>Trade one rocket at a time</small></span>
+          </span>
+          <button data-action="buy" data-item="bazooka" type="button">Buy 1 ammo</button>
+          <button data-action="sell" data-item="bazooka" type="button">Sell 1 ammo</button>
+        </div>
+        <div class="shop-row shop-trade-row" data-item="grenade">
+          <span class="shop-item-main">
+            <span class="weapon-icon grenade-icon">
+              <span class="grenade-body"></span>
+              <span class="grenade-pin"></span>
+            </span>
+            <span class="shop-item-copy"><b>Grenade</b><small>Bounces and rolls before detonation</small></span>
+          </span>
+          <button data-action="buy" data-item="grenade" type="button">Buy 1</button>
+          <button data-action="sell" data-item="grenade" type="button">Sell 1</button>
+        </div>
         <div class="shop-section">Upgrades</div>
         <div class="shop-upgrade-card" data-item="knife">
           <div class="shop-upgrade-preview">
-            <span class="weapon-icon knife-icon">
-              <span class="knife-blade"></span>
-              <span class="knife-handle"></span>
-            </span>
+            <canvas class="weapon-icon knife-icon" data-knife-icon width="82" height="48" aria-hidden="true"></canvas>
             <strong>Knife</strong>
           </div>
           <div class="shop-upgrade-list">
@@ -176,12 +186,8 @@
         </div>
         <div class="shop-upgrade-card" data-item="glock">
           <div class="shop-upgrade-preview">
-            <span class="weapon-icon glock-icon">
-              <span class="glock-slide"></span>
-              <span class="glock-grip"></span>
-              <span class="glock-trigger"></span>
-            </span>
-            <strong>Glock</strong>
+            <canvas class="weapon-icon glock-icon" data-glock-icon width="76" height="52" aria-hidden="true"></canvas>
+            <strong>pistol</strong>
           </div>
           <div class="shop-upgrade-list">
             <div class="shop-upgrade-row">
@@ -218,7 +224,7 @@
               <span class="awm-body"></span>
               <span class="awm-stock"></span>
             </span>
-            <strong>AWM</strong>
+            <strong>sniper</strong>
           </div>
           <div class="shop-upgrade-list">
             <div class="shop-upgrade-row">
@@ -244,6 +250,32 @@
               <span class="shop-upgrade-bar" aria-hidden="true"><span></span></span>
               <small class="shop-upgrade-level">Lv 0</small>
               <button data-action="upgrade" data-item="awm" data-stat="speed" type="button"></button>
+            </div>
+          </div>
+        </div>
+        <div class="shop-upgrade-card" data-item="bazooka">
+          <div class="shop-upgrade-preview">
+            <canvas class="weapon-icon bazooka-icon" data-bazooka-icon width="94" height="50" aria-hidden="true"></canvas>
+            <strong>Bazooka</strong>
+          </div>
+          <div class="shop-upgrade-list">
+            <div class="shop-upgrade-row">
+              <span>Range</span>
+              <span class="shop-upgrade-bar" aria-hidden="true"><span></span></span>
+              <small class="shop-upgrade-level">Lv 0</small>
+              <button data-action="upgrade" data-item="bazooka" data-stat="range" type="button"></button>
+            </div>
+            <div class="shop-upgrade-row">
+              <span>Blast Damage</span>
+              <span class="shop-upgrade-bar" aria-hidden="true"><span></span></span>
+              <small class="shop-upgrade-level">Lv 0</small>
+              <button data-action="upgrade" data-item="bazooka" data-stat="damage" type="button"></button>
+            </div>
+            <div class="shop-upgrade-row">
+              <span>Rocket Speed</span>
+              <span class="shop-upgrade-bar" aria-hidden="true"><span></span></span>
+              <small class="shop-upgrade-level">Lv 0</small>
+              <button data-action="upgrade" data-item="bazooka" data-stat="speed" type="button"></button>
             </div>
           </div>
         </div>
@@ -305,25 +337,26 @@
           </span>
           <button data-action="skill" data-skill="railburst" type="button"></button>
         </div>
+        <div class="shop-section">Titles</div>
+        <div class="shop-row shop-title-row" data-title-item="dizzyCamera">
+          <span class="shop-item-main">
+            <span class="title-icon title-icon-dizzy"></span>
+            <span class="shop-item-copy"><b>어지러움을 견뎌라</b><small>Rotate the world with your aim</small></span>
+          </span>
+          <button data-action="title" data-title-item="dizzyCamera" type="button">Buy 100000</button>
+        </div>
       </div>
       <div class="shop-message" id="shopMessage">K near the vendor to trade.</div>
     </div>
     <div class="inventory" aria-label="Weapon slots">
       <button class="slot" data-slot="1" type="button" aria-label="Slot 1 Knife">
         <span class="slot-key">1</span>
-        <span class="weapon-icon knife-icon">
-          <span class="knife-blade"></span>
-          <span class="knife-handle"></span>
-        </span>
+        <canvas class="weapon-icon knife-icon" data-knife-icon width="82" height="48" aria-hidden="true"></canvas>
         <span class="slot-name">Knife</span>
       </button>
       <button class="slot empty" data-slot="2" type="button" aria-label="Slot 2 Empty">
         <span class="slot-key">2</span>
-        <span class="weapon-icon glock-icon hidden" id="slot2Icon">
-          <span class="glock-slide"></span>
-          <span class="glock-grip"></span>
-          <span class="glock-trigger"></span>
-        </span>
+        <canvas class="weapon-icon glock-icon hidden" id="slot2Icon" data-glock-icon width="76" height="52" aria-hidden="true"></canvas>
         <span class="empty-mark" id="slot2Empty"></span>
         <span class="slot-name" id="slot2Name">Empty</span>
         <span class="slot-meta" id="ammoStatus"></span>
@@ -369,10 +402,29 @@
       <span class="skill-name">Empty</span>
       <span class="skill-cooldown" id="skillCooldownE"></span>
     </div>
+    <div class="skill-slot active-skill-slot test-only-skill-slot" id="skillSlotZ" data-skill-slot="z" aria-label="Z skill">
+      <span class="skill-key">Z</span>
+      <button class="skill-clear" data-clear-skill="z" type="button" aria-label="Clear Z skill">x</button>
+      <span class="equipped-skill-icon"></span>
+      <span class="skill-name">Empty</span>
+      <span class="skill-cooldown"></span>
+    </div>
+    <div class="skill-slot active-skill-slot test-only-skill-slot" id="skillSlotX" data-skill-slot="x" aria-label="X skill">
+      <span class="skill-key">X</span>
+      <button class="skill-clear" data-clear-skill="x" type="button" aria-label="Clear X skill">x</button>
+      <span class="equipped-skill-icon"></span>
+      <span class="skill-name">Empty</span>
+      <span class="skill-cooldown"></span>
+    </div>
+    <div class="info-tooltip hidden" id="infoTooltip" role="tooltip"></div>
     <script>
       window.CORE_DRIFT_GOOGLE_CLIENT_ID = "";
     </script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="config/game-config.js"></script>
+    <script src="config/assets-config.js"></script>
+    <script src="config/weapons-config.js"></script>
+    <script src="config/skills-config.js"></script>
     <script src="game.js"></script>
   </body>
 </html>

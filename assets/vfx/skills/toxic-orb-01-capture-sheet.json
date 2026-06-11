@@ -1,0 +1,16 @@
+{
+  "sourceDirectory": "C:\\Users\\JUN\\VFX Preview\\Recordings",
+  "sourcePattern": "*VFX_Toxic_Orb_01*.png",
+  "frameCount": 91,
+  "columns": 10,
+  "rows": 10,
+  "frameWidth": 214,
+  "frameHeight": 259,
+  "crop": {
+    "x": 908,
+    "y": 345,
+    "width": 214,
+    "height": 259
+  },
+  "fps": 30
+}

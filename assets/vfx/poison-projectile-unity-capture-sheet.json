@@ -1,0 +1,28 @@
+{
+  "sourceDirectory": "C:\\Users\\JUN\\VFX Preview\\Recordings",
+  "sourcePattern": "PoisonFramesImage*.png",
+  "frameCount": 91,
+  "columns": 10,
+  "rows": 10,
+  "frameWidth": 744,
+  "frameHeight": 240,
+  "crop": {
+    "x": 525,
+    "y": 371,
+    "width": 744,
+    "height": 240
+  },
+  "fps": 30,
+  "stabilized": true,
+  "centerLockStrength": {
+    "x": 0.72,
+    "y": 0.55
+  },
+  "frontLocked": true,
+  "frontLockTargetRight": 676,
+  "frontLockSourceRightRange": {
+    "min": 627,
+    "max": 722
+  },
+  "frontLockVerticalStrength": 0.75
+}
