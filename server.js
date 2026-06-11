@@ -93,7 +93,38 @@ const mimeTypes = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".wav": "audio/wav",
+  ".mp3": "audio/mpeg",
 };
+
+function getStaticCacheControl(requestedPath) {
+  const normalizedPath = requestedPath.replace(/\\/g, "/");
+
+  if (normalizedPath === "/index.html") {
+    return "no-cache";
+  }
+
+  if (normalizedPath.startsWith("/assets/")) {
+    return "public, max-age=604800";
+  }
+
+  if (normalizedPath.startsWith("/config/")) {
+    return "public, max-age=300, must-revalidate";
+  }
+
+  if (normalizedPath.endsWith(".js") || normalizedPath.endsWith(".css")) {
+    return "no-cache";
+  }
+
+  return "public, max-age=300, must-revalidate";
+}
 
 const hasDatabase = Boolean(supabaseUrl && supabaseServiceKey);
 
@@ -2035,7 +2066,7 @@ const server = http.createServer(async (request, response) => {
 
     response.writeHead(200, {
       "Content-Type": mimeTypes[path.extname(filePath)] || "application/octet-stream",
-      "Cache-Control": "no-store",
+      "Cache-Control": getStaticCacheControl(requestedPath),
     });
     response.end(data);
   });
