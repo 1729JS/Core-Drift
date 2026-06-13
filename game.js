@@ -7695,33 +7695,35 @@ function drawMagicStaffProjectileBullet(bullet, x, y, renderScale) {
 
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
-  ctx.lineCap = "round";
 
-  for (let index = trail.length - 1; index >= 1; index -= 1) {
+  for (let index = trail.length - 1; index >= 0; index -= 1) {
     const point = trail[index];
-    const previous = trail[index - 1];
     const progress = index / Math.max(1, trail.length - 1);
-    const alpha = progress * 0.42;
-    ctx.strokeStyle = `rgba(218, 224, 230, ${alpha})`;
-    ctx.lineWidth = (8 + progress * 18) * renderScale;
-    ctx.beginPath();
-    ctx.moveTo(worldToScreenX(previous.x), worldToScreenY(previous.y));
-    ctx.lineTo(worldToScreenX(point.x), worldToScreenY(point.y));
-    ctx.stroke();
+    const fade = clamp(1 - point.age / 18, 0, 1);
+    const alpha = progress * fade * 0.46;
+    const baseX = worldToScreenX(point.x);
+    const baseY = worldToScreenY(point.y);
 
-    ctx.strokeStyle = `rgba(246, 248, 250, ${alpha * 0.86})`;
-    ctx.lineWidth = (3 + progress * 7) * renderScale;
-    ctx.beginPath();
-    ctx.moveTo(worldToScreenX(previous.x), worldToScreenY(previous.y));
-    ctx.lineTo(worldToScreenX(point.x), worldToScreenY(point.y));
-    ctx.stroke();
+    for (let particle = 0; particle < 3; particle += 1) {
+      const particleSeed = bullet.visualSeed + index * 1.73 + particle * 2.31;
+      const drift = (1 - progress) * 18 + point.age * 0.36;
+      const offsetAngle = particleSeed + ageSeconds * (1.1 + particle * 0.16);
+      const offsetX = Math.cos(offsetAngle) * drift * renderScale;
+      const offsetY = Math.sin(offsetAngle * 1.37) * drift * 0.62 * renderScale;
+      const size = (1.3 + progress * 3.2 + particle * 0.45) * renderScale;
+
+      ctx.fillStyle = `rgba(232, 236, 241, ${alpha * (0.72 + particle * 0.1)})`;
+      ctx.beginPath();
+      ctx.arc(baseX + offsetX, baseY + offsetY, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   ctx.translate(x, y);
   ctx.scale(renderScale, renderScale);
   ctx.rotate(angle);
 
-  const halo = 28 * pulse;
+  const halo = 21 * pulse;
   const gradient = ctx.createRadialGradient(0, 0, 2, 0, 0, halo);
   gradient.addColorStop(0, "rgba(255, 255, 255, 0.95)");
   gradient.addColorStop(0.28, "rgba(242, 245, 248, 0.86)");
@@ -7733,33 +7735,33 @@ function drawMagicStaffProjectileBullet(bullet, x, y, renderScale) {
   ctx.fill();
 
   ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
-  ctx.lineWidth = 2.4;
+  ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.arc(0, 0, 11 * pulse, 0, Math.PI * 2);
+  ctx.arc(0, 0, 8.2 * pulse, 0, Math.PI * 2);
   ctx.stroke();
 
   ctx.fillStyle = "#fbfcfd";
   ctx.beginPath();
-  ctx.arc(0, 0, 6.2 * pulse, 0, Math.PI * 2);
+  ctx.arc(0, 0, 4.8 * pulse, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.strokeStyle = "rgba(232, 236, 241, 0.8)";
   ctx.lineWidth = 2.2;
   for (const offset of [0, Math.PI * 0.66, Math.PI * 1.32]) {
     const orbit = ageSeconds * 5.8 + bullet.visualSeed + offset;
-    const ox = Math.cos(orbit) * 18;
-    const oy = Math.sin(orbit) * 7;
+    const ox = Math.cos(orbit) * 13;
+    const oy = Math.sin(orbit) * 5;
     ctx.beginPath();
-    ctx.arc(ox, oy, 2.8, 0, Math.PI * 2);
+    ctx.arc(ox, oy, 2.1, 0, Math.PI * 2);
     ctx.stroke();
   }
 
   ctx.fillStyle = "rgba(224, 229, 235, 0.58)";
   for (let spark = 0; spark < 5; spark += 1) {
     const sparkAngle = bullet.visualSeed + ageSeconds * (3.2 + spark * 0.2) + spark * 1.43;
-    const distance = 20 + (spark % 3) * 8 + Math.sin(ageSeconds * 7 + spark) * 5;
+    const distance = 15 + (spark % 3) * 6 + Math.sin(ageSeconds * 7 + spark) * 4;
     ctx.beginPath();
-    ctx.arc(-Math.cos(sparkAngle) * distance, Math.sin(sparkAngle) * distance * 0.55, 1.8 + (spark % 2), 0, Math.PI * 2);
+    ctx.arc(-Math.cos(sparkAngle) * distance, Math.sin(sparkAngle) * distance * 0.55, 1.2 + (spark % 2) * 0.7, 0, Math.PI * 2);
     ctx.fill();
   }
 
