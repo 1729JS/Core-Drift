@@ -5262,7 +5262,7 @@ function pushMagicStaffTrailPoint(bullet, x, y) {
   for (const point of bullet.trail) {
     point.age += 1;
   }
-  while (bullet.trail.length > 22) {
+  while (bullet.trail.length > 16) {
     bullet.trail.shift();
   }
 }
@@ -7699,21 +7699,21 @@ function drawMagicStaffProjectileBullet(bullet, x, y, renderScale) {
   for (let index = trail.length - 1; index >= 0; index -= 1) {
     const point = trail[index];
     const progress = index / Math.max(1, trail.length - 1);
-    const fade = clamp(1 - point.age / 34, 0, 1);
-    const alpha = Math.pow(progress, 0.72) * fade * 0.5;
+    const fade = clamp(1 - point.age / 28, 0, 1);
+    const alpha = Math.pow(progress, 0.8) * fade * 0.28;
     const baseX = worldToScreenX(point.x);
     const baseY = worldToScreenY(point.y);
 
-    for (let particle = 0; particle < 4; particle += 1) {
+    for (let particle = 0; particle < 2; particle += 1) {
       const particleSeed = bullet.visualSeed + index * 1.73 + particle * 2.31;
-      const drift = (1 - progress) * 24 + point.age * 0.52;
+      const drift = (1 - progress) * 18 + point.age * 0.42;
       const offsetAngle = particleSeed + ageSeconds * (1.1 + particle * 0.16);
       const offsetX = Math.cos(offsetAngle) * drift * renderScale;
       const offsetY = Math.sin(offsetAngle * 1.37) * drift * 0.62 * renderScale;
       const shrink = 0.35 + fade * 0.65;
-      const size = (0.8 + progress * 3 + particle * 0.32) * shrink * renderScale;
+      const size = (0.65 + progress * 2.2 + particle * 0.24) * shrink * renderScale;
 
-      ctx.fillStyle = `rgba(232, 236, 241, ${alpha * (0.72 + particle * 0.1)})`;
+      ctx.fillStyle = `rgba(220, 225, 231, ${alpha * (0.65 + particle * 0.08)})`;
       ctx.beginPath();
       ctx.arc(baseX + offsetX, baseY + offsetY, size, 0, Math.PI * 2);
       ctx.fill();
@@ -7724,45 +7724,45 @@ function drawMagicStaffProjectileBullet(bullet, x, y, renderScale) {
   ctx.scale(renderScale, renderScale);
   ctx.rotate(angle);
 
-  const halo = 21 * pulse;
+  const halo = 15 * pulse;
   const gradient = ctx.createRadialGradient(0, 0, 2, 0, 0, halo);
-  gradient.addColorStop(0, "rgba(255, 255, 255, 0.95)");
-  gradient.addColorStop(0.28, "rgba(242, 245, 248, 0.86)");
-  gradient.addColorStop(0.62, "rgba(185, 194, 204, 0.48)");
+  gradient.addColorStop(0, "rgba(248, 250, 252, 0.72)");
+  gradient.addColorStop(0.3, "rgba(225, 230, 236, 0.5)");
+  gradient.addColorStop(0.68, "rgba(164, 174, 185, 0.2)");
   gradient.addColorStop(1, "rgba(185, 194, 204, 0)");
   ctx.fillStyle = gradient;
   ctx.beginPath();
   ctx.arc(0, 0, halo, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = "rgba(245, 247, 250, 0.56)";
+  ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.arc(0, 0, 8.2 * pulse, 0, Math.PI * 2);
+  ctx.arc(0, 0, 6.4 * pulse, 0, Math.PI * 2);
   ctx.stroke();
 
-  ctx.fillStyle = "#fbfcfd";
+  ctx.fillStyle = "rgba(248, 250, 252, 0.76)";
   ctx.beginPath();
-  ctx.arc(0, 0, 4.8 * pulse, 0, Math.PI * 2);
+  ctx.arc(0, 0, 3.6 * pulse, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.strokeStyle = "rgba(232, 236, 241, 0.8)";
-  ctx.lineWidth = 2.2;
+  ctx.strokeStyle = "rgba(216, 222, 229, 0.42)";
+  ctx.lineWidth = 1.4;
   for (const offset of [0, Math.PI * 0.66, Math.PI * 1.32]) {
     const orbit = ageSeconds * 5.8 + bullet.visualSeed + offset;
-    const ox = Math.cos(orbit) * 13;
-    const oy = Math.sin(orbit) * 5;
+    const ox = Math.cos(orbit) * 10;
+    const oy = Math.sin(orbit) * 4;
     ctx.beginPath();
-    ctx.arc(ox, oy, 2.1, 0, Math.PI * 2);
+    ctx.arc(ox, oy, 1.5, 0, Math.PI * 2);
     ctx.stroke();
   }
 
-  ctx.fillStyle = "rgba(224, 229, 235, 0.58)";
-  for (let spark = 0; spark < 5; spark += 1) {
+  ctx.fillStyle = "rgba(210, 216, 224, 0.34)";
+  for (let spark = 0; spark < 3; spark += 1) {
     const sparkAngle = bullet.visualSeed + ageSeconds * (3.2 + spark * 0.2) + spark * 1.43;
-    const distance = 15 + (spark % 3) * 6 + Math.sin(ageSeconds * 7 + spark) * 4;
+    const distance = 11 + (spark % 3) * 4 + Math.sin(ageSeconds * 7 + spark) * 3;
     ctx.beginPath();
-    ctx.arc(-Math.cos(sparkAngle) * distance, Math.sin(sparkAngle) * distance * 0.55, 1.2 + (spark % 2) * 0.7, 0, Math.PI * 2);
+    ctx.arc(-Math.cos(sparkAngle) * distance, Math.sin(sparkAngle) * distance * 0.55, 0.9 + (spark % 2) * 0.45, 0, Math.PI * 2);
     ctx.fill();
   }
 
