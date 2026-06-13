@@ -87,7 +87,7 @@ window.CORE_DRIFT_WEAPONS = {
     slashArc: Math.PI * 0.9,
     slashSize: 260,
     projectileDamage: 30,
-    projectileSpeed: 660,
+    projectileSpeed: 520,
     projectileRadius: 13,
     projectileLife: 4.55,
     projectileTurnRate: 7.8,

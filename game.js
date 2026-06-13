@@ -5256,13 +5256,13 @@ function getMagicStaffMouseTarget() {
 function pushMagicStaffTrailPoint(bullet, x, y) {
   bullet.trail = bullet.trail || [];
   const last = bullet.trail[bullet.trail.length - 1];
-  if (!last || Math.hypot(last.x - x, last.y - y) > 7) {
+  if (!last || Math.hypot(last.x - x, last.y - y) > 5) {
     bullet.trail.push({ x, y, age: 0 });
   }
   for (const point of bullet.trail) {
     point.age += 1;
   }
-  while (bullet.trail.length > 14) {
+  while (bullet.trail.length > 22) {
     bullet.trail.shift();
   }
 }
@@ -7699,18 +7699,19 @@ function drawMagicStaffProjectileBullet(bullet, x, y, renderScale) {
   for (let index = trail.length - 1; index >= 0; index -= 1) {
     const point = trail[index];
     const progress = index / Math.max(1, trail.length - 1);
-    const fade = clamp(1 - point.age / 18, 0, 1);
-    const alpha = progress * fade * 0.46;
+    const fade = clamp(1 - point.age / 34, 0, 1);
+    const alpha = Math.pow(progress, 0.72) * fade * 0.5;
     const baseX = worldToScreenX(point.x);
     const baseY = worldToScreenY(point.y);
 
-    for (let particle = 0; particle < 3; particle += 1) {
+    for (let particle = 0; particle < 4; particle += 1) {
       const particleSeed = bullet.visualSeed + index * 1.73 + particle * 2.31;
-      const drift = (1 - progress) * 18 + point.age * 0.36;
+      const drift = (1 - progress) * 24 + point.age * 0.52;
       const offsetAngle = particleSeed + ageSeconds * (1.1 + particle * 0.16);
       const offsetX = Math.cos(offsetAngle) * drift * renderScale;
       const offsetY = Math.sin(offsetAngle * 1.37) * drift * 0.62 * renderScale;
-      const size = (1.3 + progress * 3.2 + particle * 0.45) * renderScale;
+      const shrink = 0.35 + fade * 0.65;
+      const size = (0.8 + progress * 3 + particle * 0.32) * shrink * renderScale;
 
       ctx.fillStyle = `rgba(232, 236, 241, ${alpha * (0.72 + particle * 0.1)})`;
       ctx.beginPath();
